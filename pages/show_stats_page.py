@@ -62,6 +62,10 @@ def get_most_used_languages(token, name, appendRender=True):
         st.error(f"Error occurred while fetching languages: {e}")
 
 
+import requests
+import plotly.express as px
+import streamlit as st
+
 def get_user_info(token, name):
     
     graphql_query = f'''
@@ -75,10 +79,18 @@ def get_user_info(token, name):
             privateRepos: repositories(isFork: false, privacy: PRIVATE) {{
                 totalCount
             }}
-            followers {{
-                totalCount
+            contributionsCollection {{
+                contributionCalendar {{
+                    totalContributions
+                    weeks {{
+                        contributionDays {{
+                            date
+                            contributionCount
+                        }}
+                    }}
+                }}
             }}
-            following {{
+            issues {{
                 totalCount
             }}
         }}
@@ -101,28 +113,60 @@ def get_user_info(token, name):
 
         user_data = data.get("data", {}).get("user", {})
 
-        st.subheader("User Information")
-        st.write(f"Developer Name: {user_data.get('name', 'N/A')}")
-        st.write(f"Contact Email: {user_data.get('email', 'N/A')}")
-        st.write(f"Number of Public Repositories: {user_data.get('publicRepos', {}).get('totalCount', 0)}")
-        st.write(f"Followers: {user_data.get('followers', {}).get('totalCount', 0)}")
-        st.write(f"Following: {user_data.get('following', {}).get('totalCount', 0)}")
+        contribution_calendar = user_data.get("contributionsCollection", {}).get("contributionCalendar", {})
+        total_contributions = contribution_calendar.get("totalContributions", 0)
+        issue_count = user_data.get("issues", {}).get("totalCount", 0)
 
         public_repos_count = user_data.get('publicRepos', {}).get('totalCount', 0)
         private_repos_count = user_data.get('privateRepos', {}).get('totalCount', 0)
 
-        
-        fig = px.pie(
+        fig_repos = px.pie(
             names=['Public Repositories', 'Private Repositories'],
             values=[public_repos_count, private_repos_count],
             title=f"Public vs. Private Repositories for {name}",
-        
             color_discrete_sequence=px.colors.sequential.Blackbody_r,
-            
-            
         )
 
-        st.plotly_chart(fig)
+        weeks = contribution_calendar.get("weeks", [])
+        contributions_by_year = {}
+
+        for week in weeks:
+            for day in week.get("contributionDays", []):
+                date = day.get("date")
+                contribution_count = day.get("contributionCount")
+                year = date.split("-")[0]
+                if year not in contributions_by_year:
+                    contributions_by_year[year] = 0
+                contributions_by_year[year] += contribution_count
+
+        year_labels = list(contributions_by_year.keys())
+        contribution_counts = list(contributions_by_year.values())
+
+        fig_contributions = px.bar(
+            x=year_labels,
+            y=contribution_counts,
+            labels={"x": "Year", "y": "Total Contributions"},
+            title=f"Total Contributions by you, boss for your account!",
+        )
+
+        fig_issues = px.bar(
+            x=["Total Issues"],
+            y=[issue_count],
+            labels={"x": "Metric", "y": "Total Issues"},
+            title=f"Total Issues Made by {name}",
+        )
+
+        st.subheader("User Information")
+        st.write(f"Developer Name: {user_data.get('name', 'N/A')}")
+        st.write(f"Contact Email: {user_data.get('email', 'N/A')}")
+        st.write(f"Number of Public Repositories: {public_repos_count}")
+        st.write(f"Number of Private Repositories: {private_repos_count}")
+        st.write(f"Total Contributions: {total_contributions}")
+        st.write(f"Total Issues: {issue_count}")
+
+        st.plotly_chart(fig_repos)
+        st.plotly_chart(fig_contributions)
+        st.plotly_chart(fig_issues)
 
     except Exception as e:
         st.error(f"Error occurred while fetching user information: {e}")
