@@ -158,7 +158,7 @@ def fetch_custom_commit_history(selected_repo, name, token):
         response.raise_for_status()
         data = response.json()
 
-        # Extract commit data for visualization and table view
+        
         commit_nodes = data["data"]["repository"]["defaultBranchRef"]["target"]["history"]["nodes"]
         commit_data = {
             "OID": [commit["oid"] for commit in commit_nodes],
@@ -366,15 +366,15 @@ def show_commit_history(selected_repo, name, token):
         if commit_data is not None:
             st.subheader(f'Commit History for {selected_repo}')
 
-            # Create a table view
+            
             commit_df = pd.DataFrame(commit_data)
             st.write(commit_df)
 
-            # Create a line chart
+            
             fig = px.line(commit_df, x="Date", y="Commit Count", title="Commit History")
             st.plotly_chart(fig)
 
-            # Download option for CSV
+            
             st.markdown(get_csv_download_link(commit_df), unsafe_allow_html=True)
 
 if col1.button("Show My Stats"):
