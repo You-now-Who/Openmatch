@@ -288,3 +288,4 @@ if col4.button("show me, my project statssss, pls!"):
         get_project_stats(token, githubName)
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
+
