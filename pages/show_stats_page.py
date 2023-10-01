@@ -286,6 +286,3 @@ if col4.button("Show My Project Stats"):
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
 
-
-if st.session_state.selected_repo:
-    st.subheader(f"Selected Repository: {st.session_state.selected_repo}")
