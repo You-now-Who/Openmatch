@@ -390,7 +390,8 @@ try:
 
 except Exception as e:
     langs = []
-    st.error(e)
+    # st.error(e)
+    print(e)
     st.error("Please enter your GitHub username and token in the sidebar.")
 
 btn_fetch_repos = st.button("Show Repositories")
