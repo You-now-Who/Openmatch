@@ -5,6 +5,25 @@ import pandas as pd
 import webbrowser
 import json
 
+licenses = [
+    "Any",
+    "MIT License",
+    "GNU General Public License (GPL) - GPL-3.0",
+    "GNU General Public License (GPL) - GPL-2.0",
+    "Apache License - Apache-2.0",
+    "BSD License - BSD-3-Clause",
+    "BSD License - BSD-2-Clause",
+    "Mozilla Public License (MPL) - MPL-2.0",
+    "GNU Lesser General Public License (LGPL) - LGPL-3.0",
+    "GNU Lesser General Public License (LGPL) - LGPL-2.1",
+    "Eclipse Public License (EPL) - EPL-2.0",
+    "Common Development and Distribution License (CDDL) - CDDL-1.1",
+    "ISC License",
+    "Unlicense",
+    "Creative Commons Licenses",
+    "GNU Affero General Public License (AGPL) - AGPL-3.0",
+]
+
 def get_most_used_languages(token, name):
     api_end_point = "https://api.github.com/graphql"
     headers = {"Authorization": "Token " + token}
@@ -41,34 +60,6 @@ def get_most_used_languages(token, name):
     except Exception as e:
         # st.error(f"Error occurred while fetching languages: {e}")
         pass
-
-def get_topics_list(token, name):
-    endpoint = 'https://api.github.com/graphql'
-    headers = {'Authorization': 'bearer ' + token}
-
-    query = """
-    {
-  repository(owner: "github", name: "docs") {
-    repositoryTopics(first: 100) {
-      edges {
-        node {
-          topic {
-            name
-          }
-        }
-      }
-    }
-  }
-}
-"""
-
-    r = requests.post(endpoint, json={'query': query}, headers=headers)
-
-    data = json.loads(r.text)
-
-    topics = data['data']['repository']['repositoryTopics']['edges']
-    print(topics)
-    return topics
 
 def getOwnerAvatar(owner, token):
       # Try to get avatar of the owner or the organization
@@ -143,30 +134,99 @@ def get_issues(token, langs, limit=10):
 
     return issues
 
-def get_repos(langs, token, limit=10):
+def get_repos(langs, token, filters, limit=10):
 
   endpoint = 'https://api.github.com/graphql'
   headers = {'Authorization': 'bearer ' + token}
   
-  
-  query = """
-{
-  search(query: "language:""" + " language:".join(langs) + """ topic:hacktoberfest2023", type: REPOSITORY, first: """ + str(limit) +""") {
-    edges {
-      node {
-        ... on Repository {
-          name
-          description
-          owner {
-            login
+  query = ""
+
+  if filters != {}:
+      query_string = ""
+      available_filters = filters.keys()
+
+      final_filters = []
+    
+    
+      language_filters = " ".join([f'language:{lang}' for lang in langs])
+      final_filters.append(language_filters)
+
+      if "topics" in available_filters:
+        if filters["topics"] != "":
+          topics = filters["topics"].split(",")
+          topic_filters = " ".join([f'topic:{topic}' for topic in topics])
+          final_filters.append(topic_filters)
+
+      if "min_stars" in available_filters:
+        min_stars = filters["min_stars"]
+        min_stars_filter = f"stars:>{min_stars}"
+        final_filters.append(min_stars_filter)
+
+      if "min_commits" in available_filters:
+        min_commits = filters["min_commits"]
+        min_commits_filter = f"commits:>{min_commits}"
+        final_filters.append(min_commits_filter)
+
+      if "min_issues" in available_filters:
+        min_issues = filters["min_issues"]
+        min_issues_filter = f"issues:>{min_issues}"
+        final_filters.append(min_issues_filter)
+
+      if "date" in available_filters:
+        date = filters["date"]
+        date_text = filters["date_text"]
+        date_filter = f"created:{date_text}{date}"
+        final_filters.append(date_filter)
+
+      if "order_by" in available_filters:
+        order_by = filters["order_by"]
+        order_by_filter = f"sort:{order_by}"
+        final_filters.append(order_by_filter)
+
+      for f in final_filters:
+        print(f)
+        query_string += f + " "
+
+      query = """
+          {
+            search(query: \" """ + query_string + """ \", type: REPOSITORY, first: """ + str(limit) +""") {
+              edges {
+                node {
+                  ... on Repository {
+                    name
+                    description
+                    owner {
+                      login
+                    }
+                    url
+                  }
+                }
+              }
+            }
           }
-          url
+          """
+      pass
+
+  else:
+  
+    query = """
+  {
+    search(query: "language:""" + " language:".join(langs) + """ ", type: REPOSITORY, first: """ + str(limit) +""") {
+      edges {
+        node {
+          ... on Repository {
+            name
+            description
+            owner {
+              login
+            }
+            url
+          }
         }
       }
     }
   }
-}
-"""
+  """
 
   r = requests.post(endpoint, json={'query': query}, headers=headers)
 
@@ -222,9 +282,9 @@ def get_open_issues(token, langs, limit=10):
                           st.write(f"**UNABLE TO FETCH ISSUE**")
 
 
-def get_opensource_projects(token, user, langs, limit=10):
+def get_opensource_projects(token, user, langs, filters, limit=10):
 
-    repos = get_repos(langs, token, limit)
+    repos = get_repos(langs, token, filters, limit)
 
     if repos:
         # Define the number of cards per row
@@ -266,7 +326,12 @@ def get_opensource_projects(token, user, langs, limit=10):
                         
                         st.write(index+1)
                         st.write(f"**{repo['name']}**")
-                        st.write(repo['description'])
+                        # st.write(repo['description'])
+                        # limit description to 100 words
+                        try:
+                          st.write(repo['description'][:500] + '...')
+                        except:
+                          st.write("No description available")
                         st.write(f"Author: {repo['owner']['login']}")
                         st.markdown(f"[GitHub Link]({repo['url']})", unsafe_allow_html=True)
                         # st.markdown('</div>', unsafe_allow_html=True)
@@ -289,6 +354,8 @@ token = st.sidebar.text_input("Enter your GitHub personal access token", help="G
 
 repo_limit = st.slider("Number of repositories to fetch", 0, 50, 9, 3)
 
+filters = {}
+
 try:
     langs = get_most_used_languages(token, githubName)
 
@@ -297,9 +364,34 @@ try:
     if options:
         langs = options
 
-    topics = st.text_input("Enter topics to filter by", help="Enter topics separated by commas. For example: hacktoberfest2023, AI, Rust, etc")
-except:
+    show_extra_filters = st.checkbox("Show extra filters")
+
+    if show_extra_filters:
+
+      st.subheader("Extra Filters")
+      chosen_filters = st.multiselect("Select the filters you want to apply", ["Topics", "Minimum Stars", "Minimum Commits", "Minimum Issues", "Date", "Order By", "License"], default=["Topics", "Minimum Stars", "Minimum Commits", "Minimum Issues", "Date", "Order By", "License"])
+
+      if "Topics" in chosen_filters:
+        filters["topics"] = st.text_input("Enter topics to filter by", help="Enter topics separated by commas. For example: hacktoberfest2023, AI, Rust, etc")
+      if "Minimum Stars" in chosen_filters:
+        filters["min_stars"] = st.number_input("Minimum Stars", min_value=0)
+      if "Minimum Commits" in chosen_filters:
+        filters["min_commits"] = st.number_input("Minimum Commits", min_value=0)
+      if "Minimum Issues" in chosen_filters:
+        filters["min_issues"] = st.number_input("Minimum Issues", min_value=0)
+      if "Date" in chosen_filters:
+        filters["date"] = st.date_input("Date", help="Enter the date after which the repositories were created")
+        filters["date_text"] = st.selectbox("Date of creation", ["Before", "After", "On"])
+      if "Order By" in chosen_filters:
+        filters["order_by"] = st.radio("Order By", ["Stars", "Forks", "Recent"])
+      if "License" in chosen_filters:
+        filters["project_license"] = st.selectbox("License", licenses)
+
+
+except Exception as e:
     langs = []
+    # st.error(e)
+    print(e)
     st.error("Please enter your GitHub username and token in the sidebar.")
 
 btn_fetch_repos = st.button("Show Repositories")
@@ -307,7 +399,7 @@ btn_fetch_issues = st.button("Show Good First Issues")
 
 if btn_fetch_repos and langs:
     if githubName and token:
-        get_opensource_projects(token, user=githubName, langs=langs, limit=(repo_limit))
+        get_opensource_projects(token, user=githubName, langs=langs, filters=filters, limit=(repo_limit))
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
 
