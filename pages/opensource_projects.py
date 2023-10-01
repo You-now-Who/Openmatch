@@ -67,20 +67,53 @@ def getOwnerAvatar(owner, token):
 
       if user_response.status_code == 200:
         data_u = json.loads(user_response.text)
-        # print(data_u)
         try:
           return data_u['data']['user']['avatarUrl']
         except:
           return None
       elif org_response.status_code == 200:
         data_o = json.loads(org_response.text)
-        # print(data_o)
         try:
           return data_o['data']['organization']['avatarUrl']
         except:
           return None
       else:
         return None
+
+def get_issues(token, langs, limit=10):
+    
+    endpoint = 'https://api.github.com/graphql'
+    headers = {'Authorization': 'bearer ' + token}
+  
+    query = """
+  {
+    search(query: " language:""" + " language:".join(langs) + """", type: ISSUE, first: """ + str(limit) + """) {
+      edges {
+        node {
+          ... on Issue {
+            title
+            body
+            url
+            repository {
+              name
+              owner {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  """
+    
+    r = requests.post(endpoint, json={'query': query}, headers=headers)
+
+    data = json.loads(r.text)
+
+    issues = data['data']['search']['edges']
+
+    return issues
 
 def get_repos(langs, token, limit=10):
 
@@ -90,7 +123,7 @@ def get_repos(langs, token, limit=10):
   
   query = """
 {
-  search(query: "language:""" + " language:".join(langs) + """", type: REPOSITORY, first: """ + str(limit) +""") {
+  search(query: "language:""" + " language:".join(langs) + """", type: REPOSITORY, first: """ + str(limit) +""" , orderBy: {field: STARS, direction: DESC}) {
     edges {
       node {
         ... on Repository {
@@ -106,14 +139,59 @@ def get_repos(langs, token, limit=10):
   }
 }
 """
+
   r = requests.post(endpoint, json={'query': query}, headers=headers)
 
   data = json.loads(r.text)
-  # print(data['data'])
+  # return 0
   
   repos = data['data']['search']['edges']
 
   return repos
+
+def get_open_issues(token, langs, limit=10):
+    
+    issues = get_issues(token, langs=langs, limit=limit)
+
+    if issues:
+        cards_per_row = 3
+        num_rows = len(issues) // cards_per_row
+
+        card_style = """
+        <style>
+        .card {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px;
+            box-shadow: 2px 2px 5px #888888;
+        }
+        </style>
+        """
+
+        # Inject the CSS style into the Streamlit app
+        st.markdown(card_style, unsafe_allow_html=True)
+
+        # Remove all the issues that don't have a title
+        issues = [issue for issue in issues if issue['node']]
+
+        # Display repositories in cards layout
+        for row in range(num_rows):
+            columns = st.columns(cards_per_row)
+            for i in range(cards_per_row):
+                index = row * cards_per_row + i
+                if index < len(issues):
+                    issue = issues[index]['node']
+                    print(issue.keys())
+                    with columns[i]:
+                        try:
+                          st.write(f"**{issue['title']}**")
+                          # show only first 100 characters of the body
+                          st.write(issue['body'][:100] + '...')
+                          st.markdown(f"[GitHub Link]({issue['url']})", unsafe_allow_html=True)
+                        except:
+                          st.write(f"**UNABLE TO FETCH ISSUE**")
+
 
 def get_opensource_projects(token, user, langs, limit=10):
 
@@ -202,10 +280,17 @@ except:
     st.error("Please enter your GitHub username and token in the sidebar.")
 
 btn_fetch_repos = st.button("Show Repositories")
+btn_fetch_issues = st.button("Show Good First Issues")
 
 if btn_fetch_repos and langs:
     if githubName and token:
         get_opensource_projects(token, user=githubName, langs=langs, limit=(repo_limit))
+    else:
+        st.error("Please enter your GitHub username and token in the sidebar.")
+
+if btn_fetch_issues and langs:
+    if githubName and token:
+        get_open_issues(token, langs=langs, limit=(repo_limit))
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
 
