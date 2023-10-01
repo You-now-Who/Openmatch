@@ -14,8 +14,8 @@ st.markdown("<h1 style='text-align: center; color: white;'>OpenMatch</h1>", unsa
 st.markdown("<h5 style='text-align: center; color: white;font-family: 'arial'>OpenMatch: Match your coding skills!</h5>", unsafe_allow_html=True)
 st.write("""
 
-    "OpenMatch is like magic for computer stuff. It helps you find cool projects to work on, just like when you find hidden treasures. It's super fun and makes you feel like a tech superhero! So, if you're a coder, don't miss out on OpenMatch – it's awesome!,
-         Especially for the festivals of ghw, hacktoberfest or hackquad, OpenMatch has you covered!"
+    "OpenMatch is the ultimate destination of your work goals. It helps you find cool projects to work on, just like finding hidden treasures. It's super fun and makes you feel like a tech superhero! So, if you're a coder, don't miss out on OpenMatch – it's awesome!,
+         Especially for the festivals of ghw, hacktoberfest or hackquad, OpenMatch has got you covered!"
 """)
 
 st.divider()
