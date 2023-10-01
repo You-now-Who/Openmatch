@@ -3,6 +3,8 @@ import requests
 from collections import Counter
 import pandas as pd
 import webbrowser
+import json
+
 
 def fix_json_values(json_to_fix):
     for k, v in json_to_fix.items():
@@ -14,7 +16,7 @@ def fix_json_values(json_to_fix):
             json_to_fix[k] = "Yes"
     return json_to_fix
 
-def get_most_used_languages(token, name):
+def get_most_used_languages(token, name, appendRender=True):
     api_end_point = "https://api.github.com/graphql"
     headers = {"Authorization": "Token " + token}
     query = """
@@ -43,10 +45,15 @@ def get_most_used_languages(token, name):
         most_common_languages = language_counts.most_common(5)
         
         df_languages = pd.DataFrame(most_common_languages, columns=["Language", "Count"])
-        
-    
-        st.subheader("Most Used Languages")
-        st.bar_chart(df_languages.set_index("Language"))
+
+        if appendRender:
+            st.subheader("Most Used Languages")
+            st.bar_chart(df_languages.set_index("Language"))
+        else:
+            lang_list = []
+            for lang in most_common_languages:
+                lang_list.append(lang[0])
+            return lang_list
     except Exception as e:
         st.error(f"Error occurred while fetching languages: {e}")
 
@@ -136,8 +143,7 @@ def get_most_active_day(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching most active days: {e}")
 
-
-
+# 404's codes
 
 st.set_page_config(
     page_title="GitHub Stats",
@@ -182,4 +188,3 @@ if col3.button("Show Additional Stats"):
         get_most_active_day(token, githubName)
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
-
