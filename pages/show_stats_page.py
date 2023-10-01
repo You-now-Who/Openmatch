@@ -17,6 +17,7 @@ def fix_json_values(json_to_fix):
             json_to_fix[k] = "Yes"
     return json_to_fix
 
+
 def get_most_used_languages(token, name, appendRender=True):
     api_end_point = "https://api.github.com/graphql"
     headers = {"Authorization": "Token " + token}
@@ -58,6 +59,7 @@ def get_most_used_languages(token, name, appendRender=True):
     except Exception as e:
         st.error(f"Error occurred while fetching languages: {e}")
 
+
 def get_user_info(token, name):
     base_url = "https://api.github.com"
     api_end_point = f"{base_url}/users/{name}"
@@ -77,40 +79,6 @@ def get_user_info(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching user information: {e}")
 
-def get_project_stats(token, name):
-    st.title("GitHub Repository Stats")
-
-
-    base_url = "https://api.github.com"
-    api_end_point = f"{base_url}/users/{name}/repos"
-    headers = {"Authorization": "Token " + token}
-
-    try:
-        response = requests.get(api_end_point, headers=headers)
-        response.raise_for_status()
-        repos = response.json()
-        repoNames = [repo['name'] for repo in repos]
-        
-    
-        selected_repo = st.selectbox('Please choose a repository', options=repoNames)
-
-        if selected_repo:
-        
-            st.subheader(f"Visualization options for {selected_repo}")
-
-        
-            show_commits = st.checkbox('Show Commit History')
-            if show_commits:
-                
-                commit_data = fetch_custom_commit_history(selected_repo, name, token)
-                if commit_data:
-                    
-                    st.subheader(f'Commit History for {selected_repo}')
-                    st.line_chart(commit_data)
-        else:
-            st.error("please select a repo")
-    except Exception as e:
-        st.error(f"Error occurred while fetching repositories: {e}")                                    
 
 def fetch_custom_commit_history(repo_name, username, token):
     base_url = "https://api.github.com"
@@ -122,7 +90,6 @@ def fetch_custom_commit_history(repo_name, username, token):
         response.raise_for_status()
         commits = response.json()
 
-    
         commit_data = []
         for commit in commits:
             commit_data.append({
@@ -131,7 +98,6 @@ def fetch_custom_commit_history(repo_name, username, token):
                 'Message': commit['commit']['message']
             })
 
-    
         df = pd.DataFrame(commit_data)
 
         return df
@@ -141,11 +107,9 @@ def fetch_custom_commit_history(repo_name, username, token):
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
+
 def fetch_commit_history(token, name, num_days):
-
-
-    st.title("Your last commits (detailss)")
-
+    st.title("Your last commits (details)")
 
     base_url = "https://api.github.com/graphql"
     headers = {
@@ -190,6 +154,7 @@ def fetch_commit_history(token, name, num_days):
     except Exception as e:
         st.error(f"Error occurred while fetching commit history: {e}")
 
+
 def get_pull_requests(token, name):
     base_url = "https://api.github.com"
     api_end_point = f"{base_url}/search/issues?q=author:{name}+type:pr"
@@ -205,6 +170,7 @@ def get_pull_requests(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching pull request count: {e}")
 
+
 def get_most_active_day(token, name):
     base_url = "https://api.github.com"
     api_end_point = f"{base_url}/users/{name}/events"
@@ -215,7 +181,6 @@ def get_most_active_day(token, name):
         response.raise_for_status()
         events = response.json()
 
-    
         day_counter = Counter()
         for event in events:
             day = pd.Timestamp(event["created_at"]).day_name()
@@ -224,18 +189,50 @@ def get_most_active_day(token, name):
         most_active_days = day_counter.most_common()
         if most_active_days:
             st.subheader("Most Active Days")
-            
-        
+
             df_days = pd.DataFrame(most_active_days, columns=["Day", "Commits/Pushes"])
-            
-        
+
             st.line_chart(df_days.set_index("Day"))
         else:
             st.info("No commit/push activity found.")
     except Exception as e:
         st.error(f"Error occurred while fetching most active days: {e}")
 
-# 404's codes
+
+def get_project_stats(token, name):
+    st.title("GitHub Repository Stats")
+
+    base_url = "https://api.github.com"
+    api_end_point = f"{base_url}/users/{name}/repos"
+    headers = {"Authorization": "Token " + token}
+
+    try:
+        response = requests.get(api_end_point, headers=headers)
+        response.raise_for_status()
+        repos = response.json()
+        repoNames = [repo['name'] for repo in repos]
+
+        if 'selected_repo' not in st.session_state:
+            st.session_state.selected_repo = None
+
+        selected_repo = st.selectbox('Please choose a repository', options=repoNames, key='project_stats_selectbox')
+
+        if selected_repo:
+            st.subheader(f"Visualization options for {selected_repo}")
+
+            show_commits = st.checkbox('Show Commit History')
+            if show_commits:
+                commit_data = fetch_custom_commit_history(selected_repo, name, token)
+                if commit_data:
+                    st.subheader(f'Commit History for {selected_repo}')
+                    st.line_chart(commit_data)
+
+            st.session_state.selected_repo = selected_repo  
+        else:
+            st.error("Please select a repo")
+    except Exception as e:
+        st.error(f"Error occurred while fetching repositories: {e}")
+
 
 st.set_page_config(
     page_title="GitHub Stats",
@@ -243,6 +240,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto",
 )
+
 
 st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
 
@@ -252,15 +250,13 @@ token = st.sidebar.text_input("Enter your GitHub personal access token", help="G
 num_days = st.sidebar.slider("Select the number of days for commit history", 1, 365, 125)
 
 btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
-st.markdown("<p>Click on new token button and generate a new token with all the permissions for the repo granted and copy and paste it here, PLEASE!!</p>",unsafe_allow_html=True)
+st.markdown("<p>Click on the new token button, generate a new token with all the permissions for the repo granted, and copy and paste it here, PLEASE!!</p>", unsafe_allow_html=True)
 
 if btn:
     url_feedback = "https://github.com/settings/tokens?type=beta"
     webbrowser.open(url_feedback)
-else: 
-    print('testing')    
 
-st.markdown("<br>",unsafe_allow_html=True)    
+st.markdown("<br>", unsafe_allow_html=True)
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -270,11 +266,13 @@ if col1.button("Show My Stats"):
         get_most_used_languages(token, githubName)
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
+
 if col2.button("Show Recent Commits"):
     if githubName and token:
-        fetch_commit_history(token, githubName,num_days)
+        fetch_commit_history(token, githubName, num_days)
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
+
 if col3.button("Show Additional Stats"):
     if githubName and token:
         get_pull_requests(token, githubName)
@@ -282,9 +280,12 @@ if col3.button("Show Additional Stats"):
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
 
-
-if col4.button("show me, my project statssss, pls!"):
+if col4.button("Show My Project Stats"):
     if githubName and token:
-        get_project_stats(token, githubName)
+        selected_repo = get_project_stats(token, githubName)
     else:
         st.error("Please enter your GitHub username and token in the sidebar.")
+
+
+if st.session_state.selected_repo:
+    st.subheader(f"Selected Repository: {st.session_state.selected_repo}")
