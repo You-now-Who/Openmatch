@@ -42,6 +42,34 @@ def get_most_used_languages(token, name):
         # st.error(f"Error occurred while fetching languages: {e}")
         pass
 
+def get_topics_list(token, name):
+    endpoint = 'https://api.github.com/graphql'
+    headers = {'Authorization': 'bearer ' + token}
+
+    query = """
+    {
+  repository(owner: "github", name: "docs") {
+    repositoryTopics(first: 100) {
+      edges {
+        node {
+          topic {
+            name
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+    r = requests.post(endpoint, json={'query': query}, headers=headers)
+
+    data = json.loads(r.text)
+
+    topics = data['data']['repository']['repositoryTopics']['edges']
+    print(topics)
+    return topics
+
 def getOwnerAvatar(owner, token):
       # Try to get avatar of the owner or the organization
 
@@ -123,7 +151,7 @@ def get_repos(langs, token, limit=10):
   
   query = """
 {
-  search(query: "language:""" + " language:".join(langs) + """", type: REPOSITORY, first: """ + str(limit) +""" , orderBy: {field: STARS, direction: DESC}) {
+  search(query: "language:""" + " language:".join(langs) + """ topic:hacktoberfest2023", type: REPOSITORY, first: """ + str(limit) +""") {
     edges {
       node {
         ... on Repository {
@@ -144,7 +172,8 @@ def get_repos(langs, token, limit=10):
 
   data = json.loads(r.text)
   # return 0
-  
+  print(data)
+
   repos = data['data']['search']['edges']
 
   return repos
@@ -258,23 +287,17 @@ st.sidebar.subheader("GitHub Credentials")
 githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
 token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
 
-# btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
-# st.markdown("<p>Click on new token button and generate a new token with all the permissions for the repo granted and copy and paste it here, PLEASE!!</p>",unsafe_allow_html=True)
-
-# if btn:
-#     url_feedback = "https://github.com/settings/tokens?type=beta"
-#     webbrowser.open(url_feedback)
-# else: 
-#     print('testing')  
-
 repo_limit = st.slider("Number of repositories to fetch", 0, 50, 9, 3)
 
 try:
     langs = get_most_used_languages(token, githubName)
 
     options = st.multiselect("Select the languages you want to filter by", langs, default=langs)
+
     if options:
         langs = options
+
+    topics = st.text_input("Enter topics to filter by", help="Enter topics separated by commas. For example: hacktoberfest2023, AI, Rust, etc")
 except:
     langs = []
     st.error("Please enter your GitHub username and token in the sidebar.")
