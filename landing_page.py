@@ -1,13 +1,22 @@
 import streamlit as st
 from PIL import Image
+import webbrowser
+from streamlit_javascript import st_javascript
 
-image = Image.open('logo.png')
 st.set_page_config(
         page_title="OpenMatch",
         page_icon="🎯",
         layout="wide",
         initial_sidebar_state="auto",
     )
+
+
+url = st_javascript("await fetch('').then(r => window.parent.location.href)")
+
+projectsUrl = url + "opensource_projects"
+statsUrl = url + "show_stats_page"
+
+image = Image.open('logo.png')
 
 st.image(image, caption='OpenMatch logo',use_column_width=True, width=100)
 st.markdown("<h1 style='text-align: center; color: white;'>OpenMatch</h1>", unsafe_allow_html=True)
@@ -21,5 +30,14 @@ st.write("""
 st.divider()
 
 
-st.button("Get Started! 🔥, Please Find projects for me!")
-st.button('Yay! Please show me my stats, for my own knowledge!')
+btn1 = st.button("Get Started! 🔥, Please Find projects for me!")
+
+if btn1:
+    webbrowser.open(projectsUrl)
+else:
+    print('cool')    
+
+btn2 = st.button('Yay! Please show me my stats, for my own knowledge!')
+
+if btn2:
+    webbrowser.open(statsUrl)
