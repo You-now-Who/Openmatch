@@ -5,7 +5,7 @@ import pandas as pd
 import webbrowser
 import json
 
-# constants and Configuration
+# constants and configuration
 API_ENDPOINT = "https://api.github.com/graphql"
 DEFAULT_AVATAR = "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
 LICENSES = [
@@ -386,7 +386,7 @@ st.markdown("""
     </p>
 """, unsafe_allow_html=True)
 
-# improved Sidebar Filters
+# improved sidebar filters
 with st.sidebar:
     st.header("🔎 Filters")
     token = st.text_input("GitHub Token", type="password")
@@ -407,81 +407,96 @@ with st.sidebar:
     with st.expander("Advanced Filters"):
         min_stars = st.number_input("Minimum Stars", min_value=0, value=10)
         license_type = st.selectbox("License", LICENSES)
+        show_extra = st.checkbox("Show additional filters")
+    
+    if show_extra:
+            filters = {}
+            chosen_filters = st.multiselect(
+                "Additional filters to apply", 
+                ["Topics", "Minimum Commits", "Minimum Issues", "Date", "Order By"],
+                default=[]
+            )
+            
+            if "Topics" in chosen_filters:
+                filters["topics"] = st.text_input(
+                    "Enter topics to filter by", 
+                    help="Enter topics separated by commas (e.g., hacktoberfest,AI,Rust)"
+                )
+            if "Minimum Commits" in chosen_filters:
+                filters["min_commits"] = st.number_input("Minimum Commits", min_value=0)
+            if "Minimum Issues" in chosen_filters:
+                filters["min_issues"] = st.number_input("Minimum Issues", min_value=0)
+            if "Date" in chosen_filters:
+                filters["date"] = st.date_input("Repository creation date")
+                filters["date_text"] = st.selectbox(
+                    "Date filter type", 
+                    ["Before", "After", "On"]
+                )
+            if "Order By" in chosen_filters:
+                filters["order_by"] = st.radio(
+                    "Sort repositories by", 
+                    ["Stars", "Forks", "Recent"]
+                )
     
     st.markdown("---")
     st.info("💡 Tip: Add more languages to see better matches")
 
+# main content area
+st.markdown("<h2 style='text-align: center; color: white;'>Let's find some open source projects for you to contribute!</h2><br>", 
+            unsafe_allow_html=True)
 
-
-st.set_page_config(
-    page_title="GitHub Stats",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="auto",
+repo_limit = st.slider(
+    "Number of results to display", 
+    min_value=3, 
+    max_value=30, 
+    value=9, 
+    step=3,
+    help="Choose how many repositories/issues to show"
 )
 
-st.markdown("<h2 style='text-align: center; color: white;'>Let's find some open source projects for you to contribute!</h2><br><br>", unsafe_allow_html=True)
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("🚀 Show Matching Repositories", type="primary"):
+        if not (token and username):
+            st.error("Please enter your GitHub credentials")
+        elif not selected_langs:
+            st.error("Please select at least one language")
+        else:
+            with st.spinner("Searching for matching repositories..."):
+                try:
+                    base_filters = {
+                        "min_stars": min_stars,
+                        "license": license_type
+                    }
+                    if show_extra and filters:
+                        base_filters.update(filters)
+                        
+                    get_opensource_projects(
+                        token=token,
+                        user=username,
+                        langs=selected_langs,
+                        filters=base_filters,
+                        limit=repo_limit
+                    )
+                except Exception as e:
+                    st.error(f"Error searching repositories: {str(e)}")
 
-st.sidebar.subheader("GitHub Credentials")
-githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
-token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
+with col2:
+    if st.button("🐣 Show Good First Issues"):
+        if not (token and username):
+            st.error("Please enter your GitHub credentials")
+        elif not selected_langs:
+            st.error("Please select at least one language")
+        else:
+            with st.spinner("Finding beginner-friendly issues..."):
+                try:
+                    get_open_issues(
+                        token=token,
+                        langs=selected_langs,
+                        limit=repo_limit
+                    )
+                except Exception as e:
+                    st.error(f"Error searching issues: {str(e)}")
 
-repo_limit = st.slider("Number of repositories to fetch", 0, 50, 9, 3)
-
-filters = {}
-
-try:
-    langs = get_most_used_languages(token, githubName)
-
-    options = st.multiselect("Select the languages you want to filter by", langs, default=langs)
-
-    if options:
-        langs = options
-
-    show_extra_filters = st.checkbox("Show extra filters")
-
-    if show_extra_filters:
-
-      st.subheader("Extra Filters")
-      chosen_filters = st.multiselect("Select the filters you want to apply", ["Topics", "Minimum Stars", "Minimum Commits", "Minimum Issues", "Date", "Order By", "License"], default=["Topics", "Minimum Stars", "Minimum Commits", "Minimum Issues", "Date", "Order By", "License"])
-
-      if "Topics" in chosen_filters:
-        filters["topics"] = st.text_input("Enter topics to filter by", help="Enter topics separated by commas. For example: hacktoberfest2023, AI, Rust, etc")
-      if "Minimum Stars" in chosen_filters:
-        filters["min_stars"] = st.number_input("Minimum Stars", min_value=0)
-      if "Minimum Commits" in chosen_filters:
-        filters["min_commits"] = st.number_input("Minimum Commits", min_value=0)
-      if "Minimum Issues" in chosen_filters:
-        filters["min_issues"] = st.number_input("Minimum Issues", min_value=0)
-      if "Date" in chosen_filters:
-        filters["date"] = st.date_input("Date", help="Enter the date after which the repositories were created")
-        filters["date_text"] = st.selectbox("Date of creation", ["Before", "After", "On"])
-      if "Order By" in chosen_filters:
-        filters["order_by"] = st.radio("Order By", ["Stars", "Forks", "Recent"])
-      if "License" in chosen_filters:
-        filters["project_license"] = st.selectbox("License", licenses)
-
-
-except Exception as e:
-    langs = []
-    # st.error(e)
-    print(e)
-    st.error("Please enter your GitHub username and token in the sidebar.")
-
-btn_fetch_repos = st.button("Show Repositories")
-btn_fetch_issues = st.button("Show Good First Issues")
-
-if btn_fetch_repos and langs:
-    if githubName and token:
-        get_opensource_projects(token, user=githubName, langs=langs, filters=filters, limit=(repo_limit))
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
-
-if btn_fetch_issues and langs:
-    if githubName and token:
-        get_open_issues(token, langs=langs, limit=(repo_limit))
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
-
-if not githubName or not token:
-    st.sidebar.warning("Please enter your GitHub username and token in the sidebar.")
+if not token or not username:
+    st.warning("Please enter your GitHub credentials in the sidebar to begin")
