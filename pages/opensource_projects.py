@@ -28,7 +28,7 @@ def handle_errors(func):
             st.error(f"⚠️ Unexpected error: {str(e)}")
     return wrapper
   
-# improved Language detection with caching
+# improved language detection with caching
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_most_used_languages(token, name):
     if not token or not name:
@@ -283,7 +283,38 @@ def get_open_issues(token, langs, limit=10):
                           st.markdown(f"[GitHub Link]({issue['url']})", unsafe_allow_html=True)
                         except:
                           st.write(f"**UNABLE TO FETCH ISSUE**")
-
+                          
+#project card
+def project_card(repo, index, avatar_url):
+    card_html = f"""
+    <div style="
+        background: #1e1e1e;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    ">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <img src="{avatar_url}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 10px;">
+            <h3 style="margin: 0; color: #58a6ff;">{repo['name']}</h3>
+        </div>
+        <p style="color: #8b949e; font-size: 0.9rem;">
+            {repo.get('description', 'No description available')[:120]}...
+        </p>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #c9d1d9; font-size: 0.8rem;">
+                👤 {repo['owner']['login']}
+            </span>
+            <a href="{repo['url']}" target="_blank" 
+               style="color: #58a6ff; text-decoration: none; font-size: 0.8rem;">
+                View on GitHub →
+            </a>
+        </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+    
 #  main function with filters
 @handle_errors
 def get_opensource_projects(token, user, langs, filters, limit=9):
@@ -333,7 +364,11 @@ def get_opensource_projects(token, user, langs, filters, limit=9):
     st.subheader("🔍 Matching Open-Source Projects")
     for i, repo in enumerate(repos, 1):
         avatar_url = getOwnerAvatar(repo["owner"]["login"], token) or DEFAULT_AVATAR
-        project_card(repo, i, avatar_url)
+        project_card(
+            repo=repo,
+            index=i,
+            avatar_url=avatar_url
+        )
 
 # enhanced UI configuration
 st.set_page_config(
