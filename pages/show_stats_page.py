@@ -8,6 +8,22 @@ import webbrowser
 import json
 import plotly.express as px
 
+#  centralized constants
+API_ENDPOINT = "https://api.github.com/graphql"
+DEFAULT_AVATAR = "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+# error handling decorator
+def handle_errors(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.RequestException as e:
+            st.error(f"🔌 Network error: {str(e)}")
+        except json.JSONDecodeError:
+            st.error("❌ Invalid API response")
+        except Exception as e:
+            st.error(f"⚠️ Unexpected error: {str(e)}")
+    return wrapper
 
 def fix_json_values(json_to_fix):
     for k, v in json_to_fix.items():
