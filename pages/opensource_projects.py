@@ -5,25 +5,29 @@ import pandas as pd
 import webbrowser
 import json
 
-licenses = [
-    "Any",
-    "MIT License",
-    "GNU General Public License (GPL) - GPL-3.0",
-    "GNU General Public License (GPL) - GPL-2.0",
-    "Apache License - Apache-2.0",
-    "BSD License - BSD-3-Clause",
-    "BSD License - BSD-2-Clause",
-    "Mozilla Public License (MPL) - MPL-2.0",
-    "GNU Lesser General Public License (LGPL) - LGPL-3.0",
-    "GNU Lesser General Public License (LGPL) - LGPL-2.1",
-    "Eclipse Public License (EPL) - EPL-2.0",
-    "Common Development and Distribution License (CDDL) - CDDL-1.1",
-    "ISC License",
-    "Unlicense",
-    "Creative Commons Licenses",
-    "GNU Affero General Public License (AGPL) - AGPL-3.0",
+# constants and Configuration
+API_ENDPOINT = "https://api.github.com/graphql"
+DEFAULT_AVATAR = "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+LICENSES = [
+    "Any", "MIT", "GPL-3.0", "GPL-2.0", "Apache-2.0", 
+    "BSD-3-Clause", "BSD-2-Clause", "MPL-2.0", 
+    "LGPL-3.0", "LGPL-2.1", "EPL-2.0", "CDDL-1.1",
+    "ISC", "Unlicense", "AGPL-3.0"
 ]
 
+# error handling decorator
+def handle_errors(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.RequestException as e:
+            st.error(f"🔌 Network error: {str(e)}")
+        except json.JSONDecodeError:
+            st.error("❌ Invalid API response")
+        except Exception as e:
+            st.error(f"⚠️ Unexpected error: {str(e)}")
+    return wrapper
+  
 def get_most_used_languages(token, name):
     api_end_point = "https://api.github.com/graphql"
     headers = {"Authorization": "Token " + token}
