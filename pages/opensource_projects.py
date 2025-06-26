@@ -28,15 +28,18 @@ def handle_errors(func):
             st.error(f"⚠️ Unexpected error: {str(e)}")
     return wrapper
   
+# improved Language detection with caching
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_most_used_languages(token, name):
-    api_end_point = "https://api.github.com/graphql"
-    headers = {"Authorization": "Token " + token}
+    if not token or not name:
+        raise ValueError("Missing required credentials")
+        
     query = """
     {
-      user (login: "%s") {
-        repositories (first: 100) {
+      user(login: "%s") {
+        repositories(first: 100) {
           nodes {
-            languages (first: 100) {
+            languages(first: 100) {
               nodes {
                 name
               }
@@ -46,24 +49,20 @@ def get_most_used_languages(token, name):
       }
     }
     """ % name
-    try:
-        response = requests.post(api_end_point, json={"query": query}, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        language_counts = Counter()
-        for repo in data["data"]["user"]["repositories"]["nodes"]:
-            for language in repo["languages"]["nodes"]:
-                language_counts[language["name"]] += 1
-        most_common_languages = language_counts.most_common(5)
-
-        lang_list = []
-        for lang in most_common_languages:
-            lang_list.append(lang[0])
-        return lang_list
     
-    except Exception as e:
-        # st.error(f"Error occurred while fetching languages: {e}")
-        pass
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
+    response.raise_for_status()
+    
+    data = response.json()
+    language_counts = Counter()
+    
+    for repo in data["data"]["user"]["repositories"]["nodes"]:
+        for language in repo["languages"]["nodes"]:
+            language_counts[language["name"]] += 1
+            
+    return [lang[0] for lang in language_counts.most_common(5)]
 
 def getOwnerAvatar(owner, token):
       # Try to get avatar of the owner or the organization
@@ -285,61 +284,97 @@ def get_open_issues(token, langs, limit=10):
                         except:
                           st.write(f"**UNABLE TO FETCH ISSUE**")
 
+#  main function with filters
+@handle_errors
+def get_opensource_projects(token, user, langs, filters, limit=9):
+    if not token or not user:
+        raise ValueError("GitHub credentials are required")
+    
+    # build query with filters
+    query_parts = [f"language:{lang}" for lang in langs]
+    
+    if filters.get("min_stars"):
+        query_parts.append(f"stars:>={filters['min_stars']}")
+    if filters.get("license") and filters["license"] != "Any":
+        query_parts.append(f"license:{filters['license']}")
+    
+    query = " ".join(query_parts)
+    
+    gql_query = f"""
+    {{
+        search(query: "{query}", type: REPOSITORY, first: {limit}) {{
+            edges {{
+                node {{
+                    ... on Repository {{
+                        name
+                        description
+                        stargazerCount
+                        url
+                        owner {{
+                            login
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    }}
+    """
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(API_ENDPOINT, json={"query": gql_query}, headers=headers)
+    response.raise_for_status()
+    
+    data = response.json()
+    repos = [edge["node"] for edge in data["data"]["search"]["edges"]]
+    
+    if not repos:
+        return st.info("🚨 No projects found matching your criteria")
+    
+    st.subheader("🔍 Matching Open-Source Projects")
+    for i, repo in enumerate(repos, 1):
+        avatar_url = getOwnerAvatar(repo["owner"]["login"], token) or DEFAULT_AVATAR
+        project_card(repo, i, avatar_url)
 
-def get_opensource_projects(token, user, langs, filters, limit=10):
+# enhanced UI configuration
+st.set_page_config(
+    page_title="OpenMatch - Discover Projects",
+    page_icon="🔍",
+    layout="wide",
+)
 
-    repos = get_repos(langs, token, filters, limit)
+st.markdown("""
+    <h1 style='color: white; text-align: center;'>
+        Discover Open-Source Projects
+    </h1>
+    <p style='text-align: center; color: #8b949e;'>
+        Find projects matching your skills and interests
+    </p>
+""", unsafe_allow_html=True)
 
-    if repos:
-        # Define the number of cards per row
-        cards_per_row = 3
-
-        # Calculate the number of rows required
-        num_rows = len(repos) // cards_per_row
-
-        # Define a CSS class for the card style
-        card_style = """
-        <style>
-        .card {
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px;
-            box-shadow: 2px 2px 5px #888888;
-        }
-        </style>
-        """
-
-        # Inject the CSS style into the Streamlit app
-        st.markdown(card_style, unsafe_allow_html=True)
-
-        # Display repositories in cards layout
-        for row in range(num_rows):
-            columns = st.columns(cards_per_row)
-            for i in range(cards_per_row):
-                index = row * cards_per_row + i
-                if index < len(repos):
-                    repo = repos[index]['node']
-                    owner = repo['owner']
-
-                    avatarUrl = getOwnerAvatar(owner['login'], token)
-                    if avatarUrl == None:
-                        avatarUrl = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
-                    with columns[i]:
-                        st.image(avatarUrl, width=100, output_format='PNG')
-                        
-                        st.write(index+1)
-                        st.write(f"**{repo['name']}**")
-                        # st.write(repo['description'])
-                        # limit description to 100 words
-                        try:
-                          st.write(repo['description'][:500] + '...')
-                        except:
-                          st.write("No description available")
-                        st.write(f"Author: {repo['owner']['login']}")
-                        st.markdown(f"[GitHub Link]({repo['url']})", unsafe_allow_html=True)
-                        # st.markdown('</div>', unsafe_allow_html=True)
-    pass
+# improved Sidebar Filters
+with st.sidebar:
+    st.header("🔎 Filters")
+    token = st.text_input("GitHub Token", type="password")
+    username = st.text_input("GitHub Username")
+    
+    try:
+        langs = get_most_used_languages(token, username) if token and username else []
+    except:
+        langs = []
+    
+    selected_langs = st.multiselect(
+        "Languages", 
+        options=langs,
+        default=langs,
+        help="Select programming languages to filter by"
+    )
+    
+    with st.expander("Advanced Filters"):
+        min_stars = st.number_input("Minimum Stars", min_value=0, value=10)
+        license_type = st.selectbox("License", LICENSES)
+    
+    st.markdown("---")
+    st.info("💡 Tip: Add more languages to see better matches")
 
 
 
