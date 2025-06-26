@@ -3,6 +3,10 @@ from PIL import Image
 import webbrowser
 from streamlit_javascript import st_javascript
 
+#session state management
+if 'page' not in st.session_state:
+    st.session_state.page = 'landing'
+
 st.set_page_config(
         page_title="OpenMatch",
         page_icon="🎯",
@@ -16,9 +20,10 @@ url = st_javascript("await fetch('').then(r => window.parent.location.href)")
 projectsUrl = url + "opensource_projects"
 statsUrl = url + "show_stats_page"
 
+#logo and header section
 image = Image.open('logo.png')
+st.image(image, use_column_width=True, width=200)  # Removed caption, added size control  
 
-st.image(image, caption='OpenMatch logo',use_column_width=True, width=100)
 st.markdown("<h1 style='text-align: center; color: white;'>OpenMatch</h1>", unsafe_allow_html=True)
 st.markdown("<h5 style='text-align: center; color: white;font-family: 'arial'>OpenMatch: Match your coding skills!</h5>", unsafe_allow_html=True)
 st.write("""
