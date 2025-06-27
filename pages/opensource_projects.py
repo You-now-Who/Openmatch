@@ -67,8 +67,7 @@ def get_most_used_languages(token, name):
 def getOwnerAvatar(owner, token):
       # Try to get avatar of the owner or the organization
 
-      endpoint = 'https://api.github.com/graphql'
-      headers = {'Authorization': 'bearer ' + token}
+      headers = {'Authorization': f'bearer {token}'}
 
       u_query = f"""{{
         user(login: "{owner}") {{
@@ -84,8 +83,8 @@ def getOwnerAvatar(owner, token):
       }}
       """
 
-      user_response = requests.post(endpoint, json={'query': u_query}, headers=headers)
-      org_response = requests.post(endpoint, json={'query': o_query}, headers=headers)
+      user_response = requests.post(API_ENDPOINT, json={'query': u_query}, headers=headers)
+      org_response = requests.post(API_ENDPOINT, json={'query': o_query}, headers=headers)
 
       if user_response.status_code == 200:
         data_u = json.loads(user_response.text)
@@ -104,8 +103,7 @@ def getOwnerAvatar(owner, token):
 
 def get_issues(token, langs, limit=10):
     
-    endpoint = 'https://api.github.com/graphql'
-    headers = {'Authorization': 'bearer ' + token}
+    headers = {"Authorization": f"Bearer {token}"}
   
     query = """
   {
@@ -129,7 +127,7 @@ def get_issues(token, langs, limit=10):
   }
   """
     
-    r = requests.post(endpoint, json={'query': query}, headers=headers)
+    r = requests.post(API_ENDPOINT, json={'query': query}, headers=headers)
 
     data = json.loads(r.text)
 
@@ -139,8 +137,7 @@ def get_issues(token, langs, limit=10):
 
 def get_repos(langs, token, filters, limit=10):
 
-  endpoint = 'https://api.github.com/graphql'
-  headers = {'Authorization': 'bearer ' + token}
+  headers = {"Authorization": f"Bearer {token}"}
   
   query = ""
 
@@ -231,7 +228,7 @@ def get_repos(langs, token, filters, limit=10):
   }
   """
 
-  r = requests.post(endpoint, json={'query': query}, headers=headers)
+  r = requests.post(API_ENDPOINT, json={'query': query}, headers=headers)
 
   data = json.loads(r.text)
   # return 0
