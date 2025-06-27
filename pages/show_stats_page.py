@@ -381,6 +381,35 @@ def get_most_active_day(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching most active days: {e}")
 
+
+def get_csv_download_link(df):
+    """Generate download link for DataFrame"""
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="commit_history.csv">Download CSV</a>'
+    return href
+    
+def show_commit_history(selected_repo, name, token):
+    """Display commit history for a repository"""
+    if selected_repo:
+        st.subheader(f"Stats are here, boss for : {selected_repo}")
+
+        commit_data = fetch_custom_commit_history(selected_repo, name, token)
+        if commit_data is not None:
+            st.subheader(f'Commit History for {selected_repo}')
+
+            
+            commit_df = pd.DataFrame(commit_data)
+            st.write(commit_df)
+
+            
+            fig = px.line(commit_df, x="Date", y="Commit Count", title="Commit History")
+            st.plotly_chart(fig)
+
+            
+            st.markdown(get_csv_download_link(commit_df), unsafe_allow_html=True)
+
+
 # UI and button logic
 def main():
     st.set_page_config(
@@ -466,35 +495,5 @@ def main():
             st.error("Please enter your GitHub username and token in the sidebar.")
             
             
-        
-def get_csv_download_link(df):
-    """Generate download link for DataFrame"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="commit_history.csv">Download CSV</a>'
-    return href
-    
-def show_commit_history(selected_repo, name, token):
-    """Display commit history for a repository"""
-    if selected_repo:
-        st.subheader(f"Stats are here, boss for : {selected_repo}")
-
-        commit_data = fetch_custom_commit_history(selected_repo, name, token)
-        if commit_data is not None:
-            st.subheader(f'Commit History for {selected_repo}')
-
-            
-            commit_df = pd.DataFrame(commit_data)
-            st.write(commit_df)
-
-            
-            fig = px.line(commit_df, x="Date", y="Commit Count", title="Commit History")
-            st.plotly_chart(fig)
-
-            
-            st.markdown(get_csv_download_link(commit_df), unsafe_allow_html=True)
-
-
-
 if __name__ == "__main__":
     main()
