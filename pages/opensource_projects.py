@@ -4,6 +4,7 @@ from collections import Counter
 import pandas as pd
 import webbrowser
 import json
+import math
 
 # constants and configuration
 API_ENDPOINT = "https://api.github.com/graphql"
@@ -244,8 +245,8 @@ def get_open_issues(token, langs, limit=10):
 
     if issues:
         cards_per_row = 3
-        num_rows = len(issues) // cards_per_row
-
+        num_rows = math.ceil(len(issues) / cards_per_row)
+        
         card_style = """
         <style>
         .card {
@@ -406,34 +407,34 @@ with st.sidebar:
         license_type = st.selectbox("License", LICENSES)
         show_extra = st.checkbox("Show additional filters")
     
+    filters = {}
     if show_extra:
-            filters = {}
-            chosen_filters = st.multiselect(
-                "Additional filters to apply", 
-                ["Topics", "Minimum Commits", "Minimum Issues", "Date", "Order By"],
-                default=[]
+        chosen_filters = st.multiselect(
+            "Additional filters to apply", 
+            ["Topics", "Minimum Commits", "Minimum Issues", "Date", "Order By"],
+            default=[]
+        )
+        
+        if "Topics" in chosen_filters:
+            filters["topics"] = st.text_input(
+                "Enter topics to filter by", 
+                help="Enter topics separated by commas (e.g., hacktoberfest,AI,Rust)"
             )
-            
-            if "Topics" in chosen_filters:
-                filters["topics"] = st.text_input(
-                    "Enter topics to filter by", 
-                    help="Enter topics separated by commas (e.g., hacktoberfest,AI,Rust)"
-                )
-            if "Minimum Commits" in chosen_filters:
-                filters["min_commits"] = st.number_input("Minimum Commits", min_value=0)
-            if "Minimum Issues" in chosen_filters:
-                filters["min_issues"] = st.number_input("Minimum Issues", min_value=0)
-            if "Date" in chosen_filters:
-                filters["date"] = st.date_input("Repository creation date")
-                filters["date_text"] = st.selectbox(
-                    "Date filter type", 
-                    ["Before", "After", "On"]
-                )
-            if "Order By" in chosen_filters:
-                filters["order_by"] = st.radio(
-                    "Sort repositories by", 
-                    ["Stars", "Forks", "Recent"]
-                )
+        if "Minimum Commits" in chosen_filters:
+            filters["min_commits"] = st.number_input("Minimum Commits", min_value=0)
+        if "Minimum Issues" in chosen_filters:
+            filters["min_issues"] = st.number_input("Minimum Issues", min_value=0)
+        if "Date" in chosen_filters:
+            filters["date"] = st.date_input("Repository creation date")
+            filters["date_text"] = st.selectbox(
+                "Date filter type", 
+                ["Before", "After", "On"]
+            )
+        if "Order By" in chosen_filters:
+            filters["order_by"] = st.radio(
+                "Sort repositories by", 
+                ["Stars", "Forks", "Recent"]
+            )
     
     st.markdown("---")
     st.info("💡 Tip: Add more languages to see better matches")
