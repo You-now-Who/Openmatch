@@ -39,7 +39,6 @@ def fix_json_values(json_to_fix: dict) -> dict:
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_most_used_languages(token: str, name: str, appendRender: bool = True):
     """Fetch user's most used programming languages"""
-    api_end_point = API_ENDPOINT
     headers = {"Authorization": f"Bearer {token}"}
     query = """{
       user(login: "%s") {
@@ -56,7 +55,7 @@ def get_most_used_languages(token: str, name: str, appendRender: bool = True):
     }""" % name
 
     try:
-        response = requests.post(api_end_point, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
         
@@ -78,12 +77,6 @@ def get_most_used_languages(token: str, name: str, appendRender: bool = True):
         st.error(f"Error fetching languages: {e}")
         return [] if not appendRender else None
 
-
-import requests
-import plotly.express as px
-import streamlit as st
-
-
 @handle_errors
 def get_user_info(token: str, name: str):
     """Fetch and display comprehensive user statistics"""
@@ -101,6 +94,9 @@ def get_user_info(token: str, name: str):
             }}
             privateRepos: repositories(isFork: false, privacy: PRIVATE) {{
                 totalCount
+            }}
+            pullRequests {{
+            totalCount
             }}
             contributionsCollection {{
                 totalCommitContributions
@@ -188,14 +184,17 @@ def get_user_info(token: str, name: str):
                 })
                     
         df_contrib = pd.DataFrame(contrib_data)
-        fig_heatmap = px.density_heatmap(
-            df_contrib,
-            x="Day",
-            y=df_contrib["Date"].dt.strftime("%Y-W%V"),
-            z="Contributions",
-            color_continuous_scale="blues"
+        if not df_contrib.empty:
+            df_contrib["Date"] = pd.to_datetime(df_contrib["Date"])
+            fig_heatmap = px.density_heatmap(
+                df_contrib,
+                x="Day",
+                y=df_contrib["Date"].dt.strftime("%Y-W%V"),
+                z="Contributions",
+                color_continuous_scale="blues"
         )
         fig_heatmap.update_layout(title="Contribution Heatmap")
+        st.plotly_chart(fig_heatmap, use_container_width=True)
         
             # 3. Activity Bar Chart
         activity_data = {
@@ -213,7 +212,6 @@ def get_user_info(token: str, name: str):
         
         # Display all charts
         st.plotly_chart(fig_repos, use_container_width=True)
-        st.plotly_chart(fig_heatmap, use_container_width=True)
         st.plotly_chart(fig_activity, use_container_width=True)
         
     except Exception as e:
@@ -248,7 +246,7 @@ def fetch_custom_commit_history(selected_repo, name, token):
     """ % (name, selected_repo)
 
     try:
-        response = requests.post(base_url, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
 
@@ -292,7 +290,7 @@ def fetch_commit_history(token, name, num_days):
     """ % (name, (datetime.now() - timedelta(days=num_days)).date(), datetime.now().date())
 
     try:
-        response = requests.post(base_url, headers=headers, json={"query": query})
+        response = requests.post(API_ENDPOINT, headers=headers, json={"query": query})
         response.raise_for_status()
         data = response.json()
 
@@ -318,7 +316,7 @@ def fetch_commit_history(token, name, num_days):
 @handle_errors
 def get_pull_requests(token, name):
     """Visualize pull request activity"""
-    headers = {"Authorization": f"Bearer " {token}}
+    headers = {"Authorization": f"Bearer {token}"}
 
     query = """
     {
@@ -338,7 +336,7 @@ def get_pull_requests(token, name):
     """ % name
 
     try:
-        response = requests.post(base_url, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
         contributions = data["data"]["user"]["contributionsCollection"]["pullRequestContributionsByRepository"]
@@ -358,8 +356,8 @@ def get_pull_requests(token, name):
 @handle_errors
 def get_most_active_day(token, name):
     """Show weekly activity patterns"""
-    api_end_point = f"{base_url}/users/{name}/events"
-    headers = {"Authorization": "Token " + token}
+    api_end_point = f"{API_ENDPOINT}/users/{name}/events"
+    headers = {"Authorization": f"Token {token}"}
 
     try:
         response = requests.get(api_end_point, headers=headers)
@@ -383,73 +381,101 @@ def get_most_active_day(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching most active days: {e}")
 
+# UI and button logic
+def main():
+    st.set_page_config(
+        page_title="GitHub Stats",
+        page_icon="🎯",
+        layout="wide",
+        initial_sidebar_state="auto",
+    )
 
-st.set_page_config(
-    page_title="GitHub Stats",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="auto",
-)
+    st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
 
+    st.sidebar.subheader("GitHub Credentials")
+    githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
+    token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
+    num_days = st.sidebar.slider("Select the number of days for commit history", 1, 365, 125)
+    st.title("GitHub Repository Stats")
 
-st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
+    headers = {"Authorization": f"Bearer {token}"}
 
-st.sidebar.subheader("GitHub Credentials")
-githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
-token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
-num_days = st.sidebar.slider("Select the number of days for commit history", 1, 365, 125)
-st.title("GitHub Repository Stats")
-
-base_url = "https://api.github.com/graphql"
-headers = {"Authorization": "Bearer " + token}
-
-query = """
-{
-    user(login: "%s") {
-        repositories(first: 100) {
-            nodes {
-                name
+    query = """
+    {
+        user(login: "%s") {
+            repositories(first: 100) {
+                nodes {
+                    name
+                }
             }
         }
     }
-}
-""" % githubName
+    """ % githubName
 
-try:
-    response = requests.post(base_url, json={"query": query}, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    
-    repo_nodes = data["data"]["user"]["repositories"]["nodes"]
-    repo_names = [repo["name"] for repo in repo_nodes]
+    try:
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        repo_nodes = data["data"]["user"]["repositories"]["nodes"]
+        repo_names = [repo["name"] for repo in repo_nodes]
 
-    selected_repo = st.sidebar.selectbox('Please choose a repository', options=repo_names, key='project_stats_selectbox')
+        selected_repo = st.sidebar.selectbox('Please choose a repository', options=repo_names, key='project_stats_selectbox')
 
-    
+    except Exception as e:
+        st.error(f"Error occurred while fetching repositories: {e}")
+        
 
-except Exception as e:
-    st.error(f"Error occurred while fetching repositories: {e}")
-    
+    btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
+    st.markdown("<p>Click on the new token button, generate a new token with all the permissions for the repo granted, and copy and paste it here, PLEASE!!</p>", unsafe_allow_html=True)
 
-btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
-st.markdown("<p>Click on the new token button, generate a new token with all the permissions for the repo granted, and copy and paste it here, PLEASE!!</p>", unsafe_allow_html=True)
+    if btn:
+        url_feedback = "https://github.com/settings/tokens?type=beta"
+        webbrowser.open(url_feedback)
 
-if btn:
-    url_feedback = "https://github.com/settings/tokens?type=beta"
-    webbrowser.open(url_feedback)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
 
+    if col1.button("Show My Stats"):
+        if githubName and token:
+            get_user_info(token, githubName)
+            get_most_used_languages(token, githubName)
+        else:
+            st.error("Please enter your GitHub username and token in the sidebar.")
+
+    if col2.button("Show Recent Commits"):
+        if githubName and token:
+            fetch_commit_history(token, githubName, num_days)
+        else:
+            st.error("Please enter your GitHub username and token in the sidebar.")
+
+    if col3.button("Show Additional Stats"):
+        if githubName and token:
+            get_pull_requests(token, githubName)
+            get_most_active_day(token, githubName)
+        else:
+            st.error("Please enter your GitHub username and token in the sidebar.")
+
+    if col4.button("Show My Project Stats"):
+        if githubName and token:
+            
+            show_commit_history(selected_repo, githubName, token)
+        else:
+            st.error("Please enter your GitHub username and token in the sidebar.")
+            
+            
+        
 def get_csv_download_link(df):
+    """Generate download link for DataFrame"""
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
     href = f'<a href="data:file/csv;base64,{b64}" download="commit_history.csv">Download CSV</a>'
     return href
     
 def show_commit_history(selected_repo, name, token):
+    """Display commit history for a repository"""
     if selected_repo:
         st.subheader(f"Stats are here, boss for : {selected_repo}")
 
@@ -468,32 +494,7 @@ def show_commit_history(selected_repo, name, token):
             
             st.markdown(get_csv_download_link(commit_df), unsafe_allow_html=True)
 
-if col1.button("Show My Stats"):
-    if githubName and token:
-        get_user_info(token, githubName)
-        get_most_used_languages(token, githubName)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
-
-if col2.button("Show Recent Commits"):
-    if githubName and token:
-        fetch_commit_history(token, githubName, num_days)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
-
-if col3.button("Show Additional Stats"):
-    if githubName and token:
-        get_pull_requests(token, githubName)
-        get_most_active_day(token, githubName)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
-
-if col4.button("Show My Project Stats"):
-    if githubName and token:
-        
-        show_commit_history(selected_repo, githubName, token)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
 
 
-
+if __name__ == "__main__":
+    main()
