@@ -83,13 +83,18 @@ import requests
 import plotly.express as px
 import streamlit as st
 
-def get_user_info(token, name):
-    
-    graphql_query = f'''
-    query {{
+
+@handle_errors
+def get_user_info(token: str, name: str):
+    query = f"""query {{
         user(login: "{name}") {{
             name
             email
+            avatarUrl
+            bio
+            createdAt
+            location
+            websiteUrl
             publicRepos: repositories(isFork: false, privacy: PUBLIC) {{
                 totalCount
             }}
@@ -97,12 +102,16 @@ def get_user_info(token, name):
                 totalCount
             }}
             contributionsCollection {{
+                totalCommitContributions
+                totalIssueContributions
+                totalPullRequestContributions 
                 contributionCalendar {{
                     totalContributions
                     weeks {{
                         contributionDays {{
                             date
                             contributionCount
+                            weekday
                         }}
                     }}
                 }}
@@ -111,84 +120,106 @@ def get_user_info(token, name):
                 totalCount
             }}
         }}
-    }}
-    '''
+    }}"""
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization" : f"Bearer{token}"}
 
     try:
         response = requests.post(
-            "https://api.github.com/graphql",
+            API_ENDPOINT,
             headers=headers,
-            json={"query": graphql_query},
+            json={"query": query},
         )
         response.raise_for_status()
         data = response.json()
-
         user_data = data.get("data", {}).get("user", {})
 
-        contribution_calendar = user_data.get("contributionsCollection", {}).get("contributionCalendar", {})
-        total_contributions = contribution_calendar.get("totalContributions", 0)
-        issue_count = user_data.get("issues", {}).get("totalCount", 0)
+        stats = {
+            "public_repos": user_data.get('publicRepos', {}).get('totalCount', 0),
+            "private_repos": user_data.get('privateRepos', {}).get('totalCount', 0),
+            "total_contributions": user_data.get('contributionsCollection', {}).get('contributionCalendar', {}).get('totalContributions', 0),
+            "issues": user_data.get('issues', {}).get('totalCount', 0),
+            "pull_requests": user_data.get('pullRequests', {}).get('totalCount', 0),
+            "commits": user_data.get('contributionsCollection', {}).get('totalCommitContributions', 0)
+            }
+                 
+# improved visualizasion
+        with st.container():
+            # profilr header
+            cols = st.columns([1, 4])
+            with cols[0]:
+                st.image(user_data.get('avatarUrl', DEFAULT_AVATAR), width=100)
+            with cols[1]:
+                st.subheader(user_data.get('name', 'N/A'))
+                if user_data.get('bio'):
+                    st.caption(user_data['bio'])
+                st.caption(f"📍 {user_data.get('location', 'Not specified')}")
 
-        public_repos_count = user_data.get('publicRepos', {}).get('totalCount', 0)
-        private_repos_count = user_data.get('privateRepos', {}).get('totalCount', 0)
-
-        fig_repos = px.pie(
-            names=['Public Repositories', 'Private Repositories'],
-            values=[public_repos_count, private_repos_count],
-            title=f"Public vs. Private Repositories for {name}",
-            color_discrete_sequence=px.colors.sequential.Blackbody_r,
+            # stats cards
+            st.subheader("📊 Activity Overview")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Public Repos", stats['public_repos'])
+            col2.metric("Private Repos", stats['private_repos'])
+            col3.metric("Total Contributions", stats['total_contributions'])
+            col4.metric("Issues Created", stats['issues'])
+            
+            # enhanced charts
+            # 1. Repo Distribution Pie Chart
+            fig_repos = px.pie(
+                names=['Public', 'Private'],
+                values=[stats['public_repos'], stats['private_repos']],
+                title="Repository Distribution",
+                hole=0.4,
+                color_discrete_sequence=['#1f6feb', '#58a6ff']  # GitHub colors
+            )
+            fig_repos.update_traces(textposition='inside', textinfo='percent+label')
+            
+            # 2. Contributions Heatmap
+            contrib_data = []
+            weeks = user_data.get('contributionsCollection', {}).get('contributionCalendar', {}).get('weeks', [])
+            for week in weeks:
+                for day in week.get("contributionDays", []):
+                    contrib_data.append({
+                        "Date": day["date"],
+                    "Contributions": day["contributionCount"],
+                    "Day": day["weekday"]
+                })
+                    
+        df_contrib = pd.DataFrame(contrib_data)
+        fig_heatmap = px.density_heatmap(
+            df_contrib,
+            x="Day",
+            y=df_contrib["Date"].dt.strftime("%Y-W%V"),
+            z="Contributions",
+            color_continuous_scale="blues"
         )
-
-        weeks = contribution_calendar.get("weeks", [])
-        contributions_by_year = {}
-
-        for week in weeks:
-            for day in week.get("contributionDays", []):
-                date = day.get("date")
-                contribution_count = day.get("contributionCount")
-                year = date.split("-")[0]
-                if year not in contributions_by_year:
-                    contributions_by_year[year] = 0
-                contributions_by_year[year] += contribution_count
-
-        year_labels = list(contributions_by_year.keys())
-        contribution_counts = list(contributions_by_year.values())
-
-        fig_contributions = px.bar(
-            x=year_labels,
-            y=contribution_counts,
-            labels={"x": "Year", "y": "Total Contributions"},
-            title=f"Total Contributions by you, boss for your account!",
+        fig_heatmap.update_layout(title="Contribution Heatmap")
+        
+            # 3. Activity Bar Chart
+        activity_data = {
+            "Type": ["Commits", "PRs", "Issues"],
+            "Count": [stats['commits'], stats['pull_requests'], stats['issues']]
+        }
+        fig_activity = px.bar(
+            activity_data,
+            x="Type",
+            y="Count",
+            color="Type",
+            title="Activity Breakdown",
+            color_discrete_sequence=['#1f6feb', '#58a6ff', '#2ea043']
         )
-
-        fig_issues = px.bar(
-            x=["Total Issues"],
-            y=[issue_count],
-            labels={"x": "Metric", "y": "Total Issues"},
-            title=f"Total Issues Made by {name}",
-        )
-
-        st.subheader("User Information")
-        st.write(f"Developer Name: {user_data.get('name', 'N/A')}")
-        st.write(f"Contact Email: {user_data.get('email', 'N/A')}")
-        st.write(f"Number of Public Repositories: {public_repos_count}")
-        st.write(f"Number of Private Repositories: {private_repos_count}")
-        st.write(f"Total Contributions: {total_contributions}")
-        st.write(f"Total Issues: {issue_count}")
-
-        st.plotly_chart(fig_repos)
-        st.plotly_chart(fig_contributions)
-        st.plotly_chart(fig_issues)
-
+        
+        # Display all charts
+        st.plotly_chart(fig_repos, use_container_width=True)
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+        st.plotly_chart(fig_activity, use_container_width=True)
+        
     except Exception as e:
-        st.error(f"Error occurred while fetching user information: {e}")
-
-
+        st.error(f"Error fetching user info: {str(e)}")
+        if st.toggle("Show details"):
+             st.exception(e)
+                
+                                   
 def fetch_custom_commit_history(selected_repo, name, token):
     base_url = "https://api.github.com/graphql"
     headers = {"Authorization": "Bearer " + token}
