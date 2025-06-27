@@ -119,7 +119,7 @@ def get_user_info(token: str, name: str):
         }}
     }}"""
 
-    headers = {"Authorization" : f"Bearer{token}"}
+    headers = {"Authorization" : f"Bearer {token}"}
 
     try:
         response = requests.post(
@@ -421,79 +421,93 @@ def main():
 
     st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
 
-    st.sidebar.subheader("GitHub Credentials")
-    githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
-    token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
-    num_days = st.sidebar.slider("Select the number of days for commit history", 1, 365, 125)
-    st.title("GitHub Repository Stats")
-
-    headers = {"Authorization": f"Bearer {token}"}
-
-    query = """
-    {
-        user(login: "%s") {
-            repositories(first: 100) {
-                nodes {
-                    name
-                }
-            }
-        }
-    }
-    """ % githubName
-
-    try:
-        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    # sidebar controls
+    with st.sidebar:
+        st.header("🔑 GitHub Credentials")
+        githubName = st.text_input(
+            "Username",
+            help="Your public GitHub username"
+        )
+        token = st.text_input(
+            "Access Token", 
+            type="password",
+            help="Required for private repositories"
+        )
+        num_days = st.slider(
+            "Commit History Days", 
+            min_value=7,
+            max_value=365,
+            value=125,
+            help="Time window for commit analysis"
+        )
         
-        repo_nodes = data["data"]["user"]["repositories"]["nodes"]
-        repo_names = [repo["name"] for repo in repo_nodes]
-
-        selected_repo = st.sidebar.selectbox('Please choose a repository', options=repo_names, key='project_stats_selectbox')
-
-    except Exception as e:
-        st.error(f"Error occurred while fetching repositories: {e}")
-        
-
-    btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
-    st.markdown("<p>Click on the new token button, generate a new token with all the permissions for the repo granted, and copy and paste it here, PLEASE!!</p>", unsafe_allow_html=True)
-
-    if btn:
-        url_feedback = "https://github.com/settings/tokens?type=beta"
-        webbrowser.open(url_feedback)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
+        if st.button("Get Token Help"):
+            webbrowser.open("https://github.com/settings/tokens")
+            
+        # repository selector
+        try:
+            if token and githubName:
+                headers = {"Authorization": f"Bearer {token}"}
+                query = """{
+                    user(login: "%s") {
+                        repositories(first: 100) {
+                            nodes {
+                                name
+                            }
+                        }
+                    }
+                }""" % githubName
+                response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                repo_names = [repo["name"] for repo in data["data"]["user"]["repositories"]["nodes"]]
+                
+                st.divider()
+                selected_repo = st.selectbox(
+                    "Analyze Repository",
+                    options=repo_names,
+                    key='repo_selector'
+                )
+        except Exception:
+            pass
+    # main action buttons
     col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("👤 Profile Overview", help="Show user stats and activity"):
+            if githubName and token:
+                get_user_info(token, githubName)
+            else:
+                st.error("Missing credentials")
+                
+    with col2:
+        if st.button("📅 Recent Commits", help="Show recent commit activity"):
+            if githubName and token:
+                fetch_commit_history(token, githubName, num_days)
+            else:
+                st.error("Missing credentials")
 
-
-    if col1.button("Show My Stats"):
-        if githubName and token:
-            get_user_info(token, githubName)
-            get_most_used_languages(token, githubName)
-        else:
-            st.error("Please enter your GitHub username and token in the sidebar.")
-
-    if col2.button("Show Recent Commits"):
-        if githubName and token:
-            fetch_commit_history(token, githubName, num_days)
-        else:
-            st.error("Please enter your GitHub username and token in the sidebar.")
-
-    if col3.button("Show Additional Stats"):
-        if githubName and token:
-            get_pull_requests(token, githubName)
-            get_most_active_day(token, githubName)
-        else:
-            st.error("Please enter your GitHub username and token in the sidebar.")
-
-    if col4.button("Show My Project Stats"):
-        if githubName and token:
-            
-            show_commit_history(selected_repo, githubName, token)
-        else:
-            st.error("Please enter your GitHub username and token in the sidebar.")
-            
-            
+    with col3:
+        if st.button("🔄 Activity Stats", help="Show PRs and activity patterns"):
+            if githubName and token:
+                get_pull_requests(token, githubName)
+                get_most_active_day(token, githubName)
+            else:
+                st.error("Missing credentials")
+                
+    with col4:
+        if st.button("📊 Repository Analysis", help="Analyze specific repository"):
+            if githubName and token and 'repo_selector' in st.session_state:
+                show_commit_history(st.session_state.repo_selector, githubName, token)
+            else:
+                st.error("Select a repository first")   
+                
+    
+        # language analysis section
+    if githubName and token:
+        st.divider()
+        get_most_used_languages(token, githubName)
+                
+                
+                
 if __name__ == "__main__":
     main()
