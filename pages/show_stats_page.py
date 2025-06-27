@@ -35,12 +35,12 @@ def fix_json_values(json_to_fix: dict) -> dict:
     }
     return {k: conversions.get(str(v), v) for k, v in json_to_fix.items()}
 
-
+# data fetching
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_most_used_languages(token: str, name: str, appendRender: bool = True):
+    """Fetch user's most used programming languages"""
     api_end_point = API_ENDPOINT
     headers = {"Authorization": f"Bearer {token}"}
-    
     query = """{
       user(login: "%s") {
         repositories(first: 100) {
@@ -86,6 +86,7 @@ import streamlit as st
 
 @handle_errors
 def get_user_info(token: str, name: str):
+    """Fetch and display comprehensive user statistics"""
     query = f"""query {{
         user(login: "{name}") {{
             name
@@ -143,12 +144,13 @@ def get_user_info(token: str, name: str):
             "commits": user_data.get('contributionsCollection', {}).get('totalCommitContributions', 0)
             }
                  
-# improved visualizasion
+# improved visualization
+            # profile header
         with st.container():
-            # profilr header
             cols = st.columns([1, 4])
             with cols[0]:
                 st.image(user_data.get('avatarUrl', DEFAULT_AVATAR), width=100)
+                
             with cols[1]:
                 st.subheader(user_data.get('name', 'N/A'))
                 if user_data.get('bio'):
@@ -219,10 +221,10 @@ def get_user_info(token: str, name: str):
         if st.toggle("Show details"):
              st.exception(e)
                 
-                                   
+                # repo functions                                
 def fetch_custom_commit_history(selected_repo, name, token):
-    base_url = "https://api.github.com/graphql"
-    headers = {"Authorization": "Bearer " + token}
+    """Get detailed commit history for a specific repository"""
+    headers = {"Authorization": f"Bearer {token}"}
 
     query = """
     {
@@ -250,30 +252,25 @@ def fetch_custom_commit_history(selected_repo, name, token):
         response.raise_for_status()
         data = response.json()
 
-        
         commit_nodes = data["data"]["repository"]["defaultBranchRef"]["target"]["history"]["nodes"]
-        commit_data = {
+        return {
             "OID": [commit["oid"] for commit in commit_nodes],
             "Message": [commit["message"] for commit in commit_nodes],
             "Date": [commit["committedDate"] for commit in commit_nodes],
             "Commit Count": list(range(1, len(commit_nodes) + 1))
         }
 
-        return commit_data
-
     except Exception as e:
         print(e)
         st.error(f"bro, see error: {e}")
         return 
 
-
+@handle_errors
 def fetch_commit_history(token, name, num_days):
+    """Show commit activity over time"""
     st.title("Your last commits (details)")
-
-    base_url = "https://api.github.com/graphql"
     headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {token}"
     }
 
     query = """
@@ -301,7 +298,11 @@ def fetch_commit_history(token, name, num_days):
 
         contributions = data["data"]["user"]["contributionsCollection"]["contributionCalendar"]["weeks"]
         commit_data = pd.DataFrame(
-            [(datetime.strptime(day["date"], "%Y-%m-%d").date(), day["contributionCount"]) for week in contributions for day in week["contributionDays"]],
+            [
+                (datetime.strptime(day["date"], "%Y-%m-%d").date(), day["contributionCount"])
+                for week in contributions
+                for day in week["contributionDays"]
+            ],
             columns=["Date", "Commits"]
         )
 
@@ -310,13 +311,14 @@ def fetch_commit_history(token, name, num_days):
 
         st.subheader("Commit History Chart")
         st.line_chart(commit_data.set_index("Date")["Commits"])
+        
     except Exception as e:
         st.error(f"Error occurred while fetching commit history: {e}")
 
-
+@handle_errors
 def get_pull_requests(token, name):
-    base_url = "https://api.github.com/graphql"
-    headers = {"Authorization": "Bearer " + token}
+    """Visualize pull request activity"""
+    headers = {"Authorization": f"Bearer " {token}}
 
     query = """
     {
@@ -353,9 +355,9 @@ def get_pull_requests(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching pull request data: {e}")
 
-
+@handle_errors
 def get_most_active_day(token, name):
-    base_url = "https://api.github.com"
+    """Show weekly activity patterns"""
     api_end_point = f"{base_url}/users/{name}/events"
     headers = {"Authorization": "Token " + token}
 
@@ -380,9 +382,6 @@ def get_most_active_day(token, name):
             st.info("No commit/push activity found.")
     except Exception as e:
         st.error(f"Error occurred while fetching most active days: {e}")
-
-
-
 
 
 st.set_page_config(
