@@ -25,26 +25,27 @@ def handle_errors(func):
             st.error(f"⚠️ Unexpected error: {str(e)}")
     return wrapper
 
-def fix_json_values(json_to_fix):
-    for k, v in json_to_fix.items():
-        if str(v) == "False":
-            json_to_fix[k] = "No"
-        if str(v) == "None":
-            json_to_fix[k] = "Not Available"
-        if str(v) == "True":
-            json_to_fix[k] = "Yes"
-    return json_to_fix
+# fix_json_values with type hints
+def fix_json_values(json_to_fix: dict) -> dict:
+    """Convert boolean/None values to human-readable strings"""
+    conversions = {
+        "False": "No",
+        "None": "Not Available", 
+        "True": "Yes"
+    }
+    return {k: conversions.get(str(v), v) for k, v in json_to_fix.items()}
 
 
-def get_most_used_languages(token, name, appendRender=True):
-    api_end_point = "https://api.github.com/graphql"
-    headers = {"Authorization": "Token " + token}
-    query = """
-    {
-      user (login: "%s") {
-        repositories (first: 100) {
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_most_used_languages(token: str, name: str, appendRender: bool = True):
+    api_end_point = API_ENDPOINT
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    query = """{
+      user(login: "%s") {
+        repositories(first: 100) {
           nodes {
-            languages (first: 100) {
+            languages(first: 100) {
               nodes {
                 name
               }
@@ -52,30 +53,30 @@ def get_most_used_languages(token, name, appendRender=True):
           }
         }
       }
-    }
-    """ % name
+    }""" % name
+
     try:
         response = requests.post(api_end_point, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
+        
         language_counts = Counter()
         for repo in data["data"]["user"]["repositories"]["nodes"]:
             for language in repo["languages"]["nodes"]:
                 language_counts[language["name"]] += 1
-        most_common_languages = language_counts.most_common(5)
-        
-        df_languages = pd.DataFrame(most_common_languages, columns=["Language", "Count"])
+
+        most_common = language_counts.most_common(5)
+        df_languages = pd.DataFrame(most_common, columns=["Language", "Count"])
 
         if appendRender:
             st.subheader("Most Used Languages")
             st.bar_chart(df_languages.set_index("Language"))
         else:
-            lang_list = []
-            for lang in most_common_languages:
-                lang_list.append(lang[0])
-            return lang_list
+            return [lang[0] for lang in most_common]
+
     except Exception as e:
-        st.error(f"Error occurred while fetching languages: {e}")
+        st.error(f"Error fetching languages: {e}")
+        return [] if not appendRender else None
 
 
 import requests
