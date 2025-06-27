@@ -14,3 +14,13 @@ elif st.session_state.page == 'stats':
 else:
     st.error("Page not found.")
     
+"""
+    --Supplementary info--
+How it works:
+
+1. Run your app with streamlit run app.py.
+2. The landing page appears first.
+3. Clicking a button sets the page in session state and reruns, so app.py loads the correct module.
+4. All pages use the correct logic and error handling.
+
+"""
