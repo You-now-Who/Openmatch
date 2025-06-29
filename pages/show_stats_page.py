@@ -8,27 +8,43 @@ import webbrowser
 import json
 import plotly.express as px
 
+#  centralized constants
+API_ENDPOINT = "https://api.github.com/graphql"
+DEFAULT_AVATAR = "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
 
-def fix_json_values(json_to_fix):
-    for k, v in json_to_fix.items():
-        if str(v) == "False":
-            json_to_fix[k] = "No"
-        if str(v) == "None":
-            json_to_fix[k] = "Not Available"
-        if str(v) == "True":
-            json_to_fix[k] = "Yes"
-    return json_to_fix
+# error handling decorator
+def handle_errors(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.RequestException as e:
+            st.error(f"🔌 Network error: {str(e)}")
+        except json.JSONDecodeError:
+            st.error("❌ Invalid API response")
+        except Exception as e:
+            st.error(f"⚠️ Unexpected error: {str(e)}")
+    return wrapper
 
+# fix_json_values with type hints
+def fix_json_values(json_to_fix: dict) -> dict:
+    """Convert boolean/None values to human-readable strings"""
+    conversions = {
+        "False": "No",
+        "None": "Not Available", 
+        "True": "Yes"
+    }
+    return {k: conversions.get(str(v), v) for k, v in json_to_fix.items()}
 
-def get_most_used_languages(token, name, appendRender=True):
-    api_end_point = "https://api.github.com/graphql"
-    headers = {"Authorization": "Token " + token}
-    query = """
-    {
-      user (login: "%s") {
-        repositories (first: 100) {
+# data fetching
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_most_used_languages(token: str, name: str, appendRender: bool = True):
+    """Fetch user's most used programming languages"""
+    headers = {"Authorization": f"Bearer {token}"}
+    query = """{
+      user(login: "%s") {
+        repositories(first: 100) {
           nodes {
-            languages (first: 100) {
+            languages(first: 100) {
               nodes {
                 name
               }
@@ -36,56 +52,63 @@ def get_most_used_languages(token, name, appendRender=True):
           }
         }
       }
-    }
-    """ % name
+    }""" % name
+
     try:
-        response = requests.post(api_end_point, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
+        
         language_counts = Counter()
         for repo in data["data"]["user"]["repositories"]["nodes"]:
             for language in repo["languages"]["nodes"]:
                 language_counts[language["name"]] += 1
-        most_common_languages = language_counts.most_common(5)
-        
-        df_languages = pd.DataFrame(most_common_languages, columns=["Language", "Count"])
+
+        most_common = language_counts.most_common(5)
+        df_languages = pd.DataFrame(most_common, columns=["Language", "Count"])
 
         if appendRender:
             st.subheader("Most Used Languages")
             st.bar_chart(df_languages.set_index("Language"))
         else:
-            lang_list = []
-            for lang in most_common_languages:
-                lang_list.append(lang[0])
-            return lang_list
+            return [lang[0] for lang in most_common]
+
     except Exception as e:
-        st.error(f"Error occurred while fetching languages: {e}")
+        st.error(f"Error fetching languages: {e}")
+        return [] if not appendRender else None
 
-
-import requests
-import plotly.express as px
-import streamlit as st
-
-def get_user_info(token, name):
-    
-    graphql_query = f'''
-    query {{
+@handle_errors
+def get_user_info(token: str, name: str):
+    """Fetch and display comprehensive user statistics"""
+    query = f"""query {{
         user(login: "{name}") {{
             name
             email
+            avatarUrl
+            bio
+            createdAt
+            location
+            websiteUrl
             publicRepos: repositories(isFork: false, privacy: PUBLIC) {{
                 totalCount
             }}
             privateRepos: repositories(isFork: false, privacy: PRIVATE) {{
                 totalCount
             }}
+            pullRequests {{
+            totalCount
+            }}
             contributionsCollection {{
+                totalCommitContributions
+                totalIssueContributions
+                totalPullRequestContributions 
                 contributionCalendar {{
                     totalContributions
                     weeks {{
                         contributionDays {{
                             date
                             contributionCount
+                            weekday
                         }}
                     }}
                 }}
@@ -94,87 +117,112 @@ def get_user_info(token, name):
                 totalCount
             }}
         }}
-    }}
-    '''
+    }}"""
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization" : f"Bearer {token}"}
 
     try:
         response = requests.post(
-            "https://api.github.com/graphql",
+            API_ENDPOINT,
             headers=headers,
-            json={"query": graphql_query},
+            json={"query": query},
         )
         response.raise_for_status()
         data = response.json()
-
         user_data = data.get("data", {}).get("user", {})
 
-        contribution_calendar = user_data.get("contributionsCollection", {}).get("contributionCalendar", {})
-        total_contributions = contribution_calendar.get("totalContributions", 0)
-        issue_count = user_data.get("issues", {}).get("totalCount", 0)
+        stats = {
+            "public_repos": user_data.get('publicRepos', {}).get('totalCount', 0),
+            "private_repos": user_data.get('privateRepos', {}).get('totalCount', 0),
+            "total_contributions": user_data.get('contributionsCollection', {}).get('contributionCalendar', {}).get('totalContributions', 0),
+            "issues": user_data.get('issues', {}).get('totalCount', 0),
+            "pull_requests": user_data.get('pullRequests', {}).get('totalCount', 0),
+            "commits": user_data.get('contributionsCollection', {}).get('totalCommitContributions', 0)
+            }
+                 
+# improved visualization
+            # profile header
+        with st.container():
+            cols = st.columns([1, 4])
+            with cols[0]:
+                st.image(user_data.get('avatarUrl', DEFAULT_AVATAR), width=100)
+                
+            with cols[1]:
+                st.subheader(user_data.get('name', 'N/A'))
+                if user_data.get('bio'):
+                    st.caption(user_data['bio'])
+                st.caption(f"📍 {user_data.get('location', 'Not specified')}")
 
-        public_repos_count = user_data.get('publicRepos', {}).get('totalCount', 0)
-        private_repos_count = user_data.get('privateRepos', {}).get('totalCount', 0)
-
-        fig_repos = px.pie(
-            names=['Public Repositories', 'Private Repositories'],
-            values=[public_repos_count, private_repos_count],
-            title=f"Public vs. Private Repositories for {name}",
-            color_discrete_sequence=px.colors.sequential.Blackbody_r,
+            # stats cards
+            st.subheader("📊 Activity Overview")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Public Repos", stats['public_repos'])
+            col2.metric("Private Repos", stats['private_repos'])
+            col3.metric("Total Contributions", stats['total_contributions'])
+            col4.metric("Issues Created", stats['issues'])
+            
+            # enhanced charts
+            # 1. Repo Distribution Pie Chart
+            fig_repos = px.pie(
+                names=['Public', 'Private'],
+                values=[stats['public_repos'], stats['private_repos']],
+                title="Repository Distribution",
+                hole=0.4,
+                color_discrete_sequence=['#1f6feb', '#58a6ff']  # GitHub colors
+            )
+            fig_repos.update_traces(textposition='inside', textinfo='percent+label')
+            
+            # 2. Contributions Heatmap
+            contrib_data = []
+            weeks = user_data.get('contributionsCollection', {}).get('contributionCalendar', {}).get('weeks', [])
+            for week in weeks:
+                for day in week.get("contributionDays", []):
+                    contrib_data.append({
+                        "Date": day["date"],
+                    "Contributions": day["contributionCount"],
+                    "Day": day["weekday"]
+                })
+                    
+        df_contrib = pd.DataFrame(contrib_data)
+        if not df_contrib.empty:
+            df_contrib["Date"] = pd.to_datetime(df_contrib["Date"])
+            fig_heatmap = px.density_heatmap(
+                df_contrib,
+                x="Day",
+                y=df_contrib["Date"].dt.strftime("%Y-W%V"),
+                z="Contributions",
+                color_continuous_scale="blues"
         )
-
-        weeks = contribution_calendar.get("weeks", [])
-        contributions_by_year = {}
-
-        for week in weeks:
-            for day in week.get("contributionDays", []):
-                date = day.get("date")
-                contribution_count = day.get("contributionCount")
-                year = date.split("-")[0]
-                if year not in contributions_by_year:
-                    contributions_by_year[year] = 0
-                contributions_by_year[year] += contribution_count
-
-        year_labels = list(contributions_by_year.keys())
-        contribution_counts = list(contributions_by_year.values())
-
-        fig_contributions = px.bar(
-            x=year_labels,
-            y=contribution_counts,
-            labels={"x": "Year", "y": "Total Contributions"},
-            title=f"Total Contributions by you, boss for your account!",
+        fig_heatmap.update_layout(title="Contribution Heatmap")
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+        
+            # 3. Activity Bar Chart
+        activity_data = {
+            "Type": ["Commits", "PRs", "Issues"],
+            "Count": [stats['commits'], stats['pull_requests'], stats['issues']]
+        }
+        fig_activity = px.bar(
+            activity_data,
+            x="Type",
+            y="Count",
+            color="Type",
+            title="Activity Breakdown",
+            color_discrete_sequence=['#1f6feb', '#58a6ff', '#2ea043']
         )
-
-        fig_issues = px.bar(
-            x=["Total Issues"],
-            y=[issue_count],
-            labels={"x": "Metric", "y": "Total Issues"},
-            title=f"Total Issues Made by {name}",
-        )
-
-        st.subheader("User Information")
-        st.write(f"Developer Name: {user_data.get('name', 'N/A')}")
-        st.write(f"Contact Email: {user_data.get('email', 'N/A')}")
-        st.write(f"Number of Public Repositories: {public_repos_count}")
-        st.write(f"Number of Private Repositories: {private_repos_count}")
-        st.write(f"Total Contributions: {total_contributions}")
-        st.write(f"Total Issues: {issue_count}")
-
-        st.plotly_chart(fig_repos)
-        st.plotly_chart(fig_contributions)
-        st.plotly_chart(fig_issues)
-
+        
+        # Display all charts
+        st.plotly_chart(fig_repos, use_container_width=True)
+        st.plotly_chart(fig_activity, use_container_width=True)
+        
     except Exception as e:
-        st.error(f"Error occurred while fetching user information: {e}")
-
-
+        st.error(f"Error fetching user info: {str(e)}")
+        if st.toggle("Show details"):
+             st.exception(e)
+                
+                # repo functions                                
 def fetch_custom_commit_history(selected_repo, name, token):
-    base_url = "https://api.github.com/graphql"
-    headers = {"Authorization": "Bearer " + token}
+    """Get detailed commit history for a specific repository"""
+    headers = {"Authorization": f"Bearer {token}"}
 
     query = """
     {
@@ -198,34 +246,29 @@ def fetch_custom_commit_history(selected_repo, name, token):
     """ % (name, selected_repo)
 
     try:
-        response = requests.post(base_url, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
 
-        
         commit_nodes = data["data"]["repository"]["defaultBranchRef"]["target"]["history"]["nodes"]
-        commit_data = {
+        return {
             "OID": [commit["oid"] for commit in commit_nodes],
             "Message": [commit["message"] for commit in commit_nodes],
             "Date": [commit["committedDate"] for commit in commit_nodes],
             "Commit Count": list(range(1, len(commit_nodes) + 1))
         }
 
-        return commit_data
-
     except Exception as e:
         print(e)
         st.error(f"bro, see error: {e}")
         return 
 
-
+@handle_errors
 def fetch_commit_history(token, name, num_days):
+    """Show commit activity over time"""
     st.title("Your last commits (details)")
-
-    base_url = "https://api.github.com/graphql"
     headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {token}"
     }
 
     query = """
@@ -247,13 +290,17 @@ def fetch_commit_history(token, name, num_days):
     """ % (name, (datetime.now() - timedelta(days=num_days)).date(), datetime.now().date())
 
     try:
-        response = requests.post(base_url, headers=headers, json={"query": query})
+        response = requests.post(API_ENDPOINT, headers=headers, json={"query": query})
         response.raise_for_status()
         data = response.json()
 
         contributions = data["data"]["user"]["contributionsCollection"]["contributionCalendar"]["weeks"]
         commit_data = pd.DataFrame(
-            [(datetime.strptime(day["date"], "%Y-%m-%d").date(), day["contributionCount"]) for week in contributions for day in week["contributionDays"]],
+            [
+                (datetime.strptime(day["date"], "%Y-%m-%d").date(), day["contributionCount"])
+                for week in contributions
+                for day in week["contributionDays"]
+            ],
             columns=["Date", "Commits"]
         )
 
@@ -262,13 +309,14 @@ def fetch_commit_history(token, name, num_days):
 
         st.subheader("Commit History Chart")
         st.line_chart(commit_data.set_index("Date")["Commits"])
+        
     except Exception as e:
         st.error(f"Error occurred while fetching commit history: {e}")
 
-
+@handle_errors
 def get_pull_requests(token, name):
-    base_url = "https://api.github.com/graphql"
-    headers = {"Authorization": "Bearer " + token}
+    """Visualize pull request activity"""
+    headers = {"Authorization": f"Bearer {token}"}
 
     query = """
     {
@@ -288,7 +336,7 @@ def get_pull_requests(token, name):
     """ % name
 
     try:
-        response = requests.post(base_url, json={"query": query}, headers=headers)
+        response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
         contributions = data["data"]["user"]["contributionsCollection"]["pullRequestContributionsByRepository"]
@@ -305,11 +353,11 @@ def get_pull_requests(token, name):
     except Exception as e:
         st.error(f"Error occurred while fetching pull request data: {e}")
 
-
+@handle_errors
 def get_most_active_day(token, name):
-    base_url = "https://api.github.com"
-    api_end_point = f"{base_url}/users/{name}/events"
-    headers = {"Authorization": "Token " + token}
+    """Show weekly activity patterns"""
+    api_end_point = f"{API_ENDPOINT}/users/{name}/events"
+    headers = {"Authorization": f"Token {token}"}
 
     try:
         response = requests.get(api_end_point, headers=headers)
@@ -334,75 +382,15 @@ def get_most_active_day(token, name):
         st.error(f"Error occurred while fetching most active days: {e}")
 
 
-
-
-
-st.set_page_config(
-    page_title="GitHub Stats",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="auto",
-)
-
-
-st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
-
-st.sidebar.subheader("GitHub Credentials")
-githubName = st.sidebar.text_input("Enter your GitHub username", help="Enter your GitHub username to fetch your stats")
-token = st.sidebar.text_input("Enter your GitHub personal access token", help="Generate a personal access token in your GitHub settings and enter it here.", type="password")
-num_days = st.sidebar.slider("Select the number of days for commit history", 1, 365, 125)
-st.title("GitHub Repository Stats")
-
-base_url = "https://api.github.com/graphql"
-headers = {"Authorization": "Bearer " + token}
-
-query = """
-{
-    user(login: "%s") {
-        repositories(first: 100) {
-            nodes {
-                name
-            }
-        }
-    }
-}
-""" % githubName
-
-try:
-    response = requests.post(base_url, json={"query": query}, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    
-    repo_nodes = data["data"]["user"]["repositories"]["nodes"]
-    repo_names = [repo["name"] for repo in repo_nodes]
-
-    selected_repo = st.sidebar.selectbox('Please choose a repository', options=repo_names, key='project_stats_selectbox')
-
-    
-
-except Exception as e:
-    st.error(f"Error occurred while fetching repositories: {e}")
-    
-
-btn = st.button("Get your token from github developer settings 😎(opens in a new tab)")
-st.markdown("<p>Click on the new token button, generate a new token with all the permissions for the repo granted, and copy and paste it here, PLEASE!!</p>", unsafe_allow_html=True)
-
-if btn:
-    url_feedback = "https://github.com/settings/tokens?type=beta"
-    webbrowser.open(url_feedback)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
-
-
 def get_csv_download_link(df):
+    """Generate download link for DataFrame"""
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
     href = f'<a href="data:file/csv;base64,{b64}" download="commit_history.csv">Download CSV</a>'
     return href
     
 def show_commit_history(selected_repo, name, token):
+    """Display commit history for a repository"""
     if selected_repo:
         st.subheader(f"Stats are here, boss for : {selected_repo}")
 
@@ -421,32 +409,105 @@ def show_commit_history(selected_repo, name, token):
             
             st.markdown(get_csv_download_link(commit_df), unsafe_allow_html=True)
 
-if col1.button("Show My Stats"):
-    if githubName and token:
-        get_user_info(token, githubName)
-        get_most_used_languages(token, githubName)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
 
-if col2.button("Show Recent Commits"):
-    if githubName and token:
-        fetch_commit_history(token, githubName, num_days)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
+# UI and button logic
+def main():
+    st.set_page_config(
+        page_title="GitHub Stats",
+        page_icon="🎯",
+        layout="wide",
+        initial_sidebar_state="auto",
+    )
 
-if col3.button("Show Additional Stats"):
-    if githubName and token:
-        get_pull_requests(token, githubName)
-        get_most_active_day(token, githubName)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
+    st.markdown("<h2 style='text-align: center; color: white;'>Let's get to know your GitHub stats!</h2><br><br>", unsafe_allow_html=True)
 
-if col4.button("Show My Project Stats"):
-    if githubName and token:
+    # sidebar controls
+    with st.sidebar:
+        st.header("🔑 GitHub Credentials")
+        githubName = st.text_input(
+            "Username",
+            help="Your public GitHub username"
+        )
+        token = st.text_input(
+            "Access Token", 
+            type="password",
+            help="Required for private repositories"
+        )
+        num_days = st.slider(
+            "Commit History Days", 
+            min_value=7,
+            max_value=365,
+            value=125,
+            help="Time window for commit analysis"
+        )
         
-        show_commit_history(selected_repo, githubName, token)
-    else:
-        st.error("Please enter your GitHub username and token in the sidebar.")
+        if st.button("Get Token Help"):
+            webbrowser.open("https://github.com/settings/tokens")
+            
+        # repository selector
+        try:
+            if token and githubName:
+                headers = {"Authorization": f"Bearer {token}"}
+                query = """{
+                    user(login: "%s") {
+                        repositories(first: 100) {
+                            nodes {
+                                name
+                            }
+                        }
+                    }
+                }""" % githubName
+                response = requests.post(API_ENDPOINT, json={"query": query}, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                repo_names = [repo["name"] for repo in data["data"]["user"]["repositories"]["nodes"]]
+                
+                st.divider()
+                selected_repo = st.selectbox(
+                    "Analyze Repository",
+                    options=repo_names,
+                    key='repo_selector'
+                )
+        except Exception:
+            pass
+    # main action buttons
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("👤 Profile Overview", help="Show user stats and activity"):
+            if githubName and token:
+                get_user_info(token, githubName)
+            else:
+                st.error("Missing credentials")
+                
+    with col2:
+        if st.button("📅 Recent Commits", help="Show recent commit activity"):
+            if githubName and token:
+                fetch_commit_history(token, githubName, num_days)
+            else:
+                st.error("Missing credentials")
 
-
-
+    with col3:
+        if st.button("🔄 Activity Stats", help="Show PRs and activity patterns"):
+            if githubName and token:
+                get_pull_requests(token, githubName)
+                get_most_active_day(token, githubName)
+            else:
+                st.error("Missing credentials")
+                
+    with col4:
+        if st.button("📊 Repository Analysis", help="Analyze specific repository"):
+            if githubName and token and 'repo_selector' in st.session_state:
+                show_commit_history(st.session_state.repo_selector, githubName, token)
+            else:
+                st.error("Select a repository first")   
+                
+    
+        # language analysis section
+    if githubName and token:
+        st.divider()
+        get_most_used_languages(token, githubName)
+                
+                
+                
+if __name__ == "__main__":
+    main()
